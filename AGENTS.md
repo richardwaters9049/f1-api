@@ -1,69 +1,90 @@
-# AGENTS.md
+# AGENTS.md — F1 API Project Instructions
 
-## Project
+## Project Overview
 
-This repository contains the dedicated Formula 1 API service for the F1 application.
+This repository contains the dedicated Formula 1 data API used as the backend data layer for the Fast Girls Club F1 experience.
 
-The service is located at:
-
-```text
-~/Documents/Github/fast_girls_club/f1-api
-```
-
-Its responsibility is to retrieve Formula 1 data from external providers, normalise that data into application-owned models, and expose it through a stable REST API.
-
-The Next.js F1 application consumes this service instead of communicating directly with external F1 data providers.
-
-## Architecture
-
-```text
-External F1 APIs
-       │
-       ▼
-    F1 API
-       │
-       ├── Fetch
-       ├── Normalise
-       ├── Validate
-       ├── Aggregate
-       └── Cache
-       │
-       ▼
-Next.js F1 Application
-       │
-       ▼
-      UI
-```
-
-The F1 API is the application's dedicated F1 data layer.
-
-Do not move external provider-specific logic into the Next.js frontend.
-
-## Technology
-
-Use:
+The service is built with:
 
 - Bun
 - TypeScript
 - Fastify
-- Native `fetch`
-- REST
-- Strict TypeScript configuration
 
-Do not introduce unnecessary frameworks or dependencies.
+The API consumes Formula 1 data from:
+
+```text
+https://f1api.dev/api
+```
+
+The service normalises, validates, caches and exposes that data through a small internal API.
+
+---
+
+## Core Principle
+
+**Never fabricate Formula 1 data.**
+
+This is a data service, not a mock-data service.
+
+Do not invent or hard-code:
+
+- Drivers
+- Constructors
+- Championship points
+- Race results
+- Positions
+- Lap times
+- Session states
+- Circuit information
+- Dates
+- Times
+- Live timing
+- Track status
+
+If the provider does not supply a value, preserve the missing value or return an appropriate error.
+
+Do not replace missing upstream data with a plausible-looking value.
+
+---
+
+## Current Provider
+
+The current upstream provider is:
+
+```text
+f1api.dev
+```
+
+Base URL:
+
+```text
+https://f1api.dev/api
+```
+
+Do not add a second provider without a clear architectural reason.
+
+Provider changes should be documented in `docs/notes.md`.
+
+---
+
+## Current API Version
+
+```text
+0.1.0
+```
+
+The current Formula 1 season is determined from provider data.
+
+Do not hard-code the current season in application logic when it can be obtained from the provider.
+
+---
 
 ## Runtime
 
 Development:
 
 ```bash
-bun --hot src/index.ts
-```
-
-Type checking:
-
-```bash
-bun run typecheck
+bun run dev
 ```
 
 Production:
@@ -72,389 +93,341 @@ Production:
 bun run start
 ```
 
-Install dependencies with:
-
-```bash
-bun install
-```
-
-## Port
-
-The default port is:
-
-```text
-8787
-```
-
-The service automatically attempts the next port when the preferred port is already occupied.
-
-The port can be overridden with:
-
-```bash
-PORT=9000 bun --hot src/index.ts
-```
-
-The host can be overridden with:
-
-```bash
-HOST=0.0.0.0 bun --hot src/index.ts
-```
-
-## Project Structure
-
-```text
-src/
-├── index.ts
-├── routes/
-│   ├── constructors.ts
-│   └── drivers.ts
-├── services/
-│   └── f1Api.ts
-└── types/
-    └── f1.ts
-```
-
-### `src/index.ts`
-
-Responsible for:
-
-- Creating the Fastify application
-- Registering routes
-- Health endpoint
-- Server startup
-- Port handling
-
-Do not put external F1 provider logic directly in this file.
-
-### `src/routes/`
-
-Routes expose application-facing HTTP endpoints.
-
-Routes should:
-
-- Call service functions
-- Handle expected errors
-- Return stable response structures
-- Avoid containing provider-specific parsing logic
-
-### `src/services/`
-
-Services communicate with external F1 providers.
-
-Provider-specific response interfaces belong here when they are only relevant to that provider.
-
-Service functions should convert external responses into the application's internal models before returning them.
-
-### `src/types/`
-
-Contains application-owned F1 models.
-
-Current models include:
-
-```text
-Driver
-Constructor
-```
-
-Keep internal models independent from external provider response types.
-
-## Current API
-
-### Health
-
-```text
-GET /api/health
-```
-
-### Drivers
-
-```text
-GET /api/drivers
-```
-
-### Constructors
-
-```text
-GET /api/constructors
-```
-
-Future endpoints:
-
-```text
-GET /api/races
-GET /api/races/:round
-GET /api/standings/drivers
-GET /api/standings/constructors
-GET /api/live
-```
-
-## External Provider
-
-Current provider:
-
-```text
-https://f1api.dev/api
-```
-
-Current upstream endpoints:
-
-```text
-/current/drivers?limit=100
-/current/teams?limit=100
-```
-
-Do not assume an external response structure.
-
-Inspect the actual provider response before implementing a new integration.
-
-Do not invent provider fields.
-
-## Data Normalisation
-
-The external provider's models must not leak into the application's public API.
-
-For example, external driver data is converted into:
-
-```text
-Driver
-├── driverId
-├── number
-├── code
-├── firstName
-├── lastName
-├── fullName
-├── nationality
-├── dateOfBirth
-├── permanentNumber
-└── url
-```
-
-External naming differences should be handled inside the service layer.
-
-## Error Handling
-
-External API failures should be handled by the route layer.
-
-Upstream failures should normally result in an HTTP `502` response.
-
-Do not expose raw provider error payloads to the frontend unless there is a deliberate reason to do so.
-
-Log useful server-side error information.
-
-## TypeScript Rules
-
-Use strict TypeScript.
-
-Prefer:
-
-```typescript
-import type { FastifyInstance } from "fastify";
-```
-
-when importing types.
-
-Use explicit return types for exported service and route functions where practical.
-
-Do not use `any` unless there is a clear technical reason.
-
-Do not suppress TypeScript errors without understanding the underlying problem.
-
-Use application-owned interfaces for data returned to the Next.js application.
-
-## Route Development Workflow
-
-When adding a new endpoint:
-
-1. Confirm the external provider endpoint.
-2. Inspect its real response.
-3. Create or update the provider response type.
-4. Create or update the internal application model.
-5. Implement the provider fetch.
-6. Normalise the response.
-7. Add the Fastify route.
-8. Add error handling.
-9. Test with `curl`.
-10. Run `bun run typecheck`.
-11. Update `README.md` if the public API changed.
-
-Do not skip provider response inspection.
-
-## Live Data
-
-The intended live architecture is:
-
-```text
-Multiple F1 Data Providers
-          │
-          ▼
-     F1 API Service
-          │
-          ├── Provider adapters
-          ├── Normalisation
-          ├── Validation
-          ├── Aggregation
-          └── Caching
-          │
-          ▼
-       Next.js API
-          │
-          ▼
-      F1DataHub
-```
-
-The F1 API should eventually aggregate multiple data sources where appropriate.
-
-Do not make the frontend responsible for combining provider responses.
-
-## Caching
-
-There is currently no database or persistent cache.
-
-Do not introduce a database simply for the sake of adding one.
-
-When caching becomes necessary, consider the refresh characteristics of each data type independently.
-
-Potential cache targets:
-
-- Drivers
-- Constructors
-- Race calendar
-- Race results
-- Driver standings
-- Constructor standings
-- Session information
-- Live timing
-
-## Database
-
-No database is currently required.
-
-If a database is introduced later, document:
-
-- Why it is required
-- What data is persisted
-- Retention rules
-- Migration strategy
-- Local development setup
-
-Do not store transient live timing data permanently without a clear reason.
-
-## API Contract
-
-The public API should be stable and application-owned.
-
-External provider changes should normally require changes only inside the service layer.
-
-Avoid returning raw upstream responses such as:
-
-```text
-return providerResponse
-```
-
-when an application-owned model exists.
-
-Instead:
-
-```text
-provider response
-      ↓
-normalisation
-      ↓
-application model
-      ↓
-HTTP response
-```
-
-## Next.js Integration
-
-The Next.js application communicates with the F1 API through:
-
-```text
-F1_LIVE_SERVICE_URL
-```
-
-Local development normally uses:
-
-```text
-F1_LIVE_SERVICE_URL=http://127.0.0.1:8787
-```
-
-The Next.js application should consume the F1 API rather than directly calling `f1api.dev`.
-
-The F1 API owns the provider integration.
-
-## Security
-
-Do not expose unnecessary upstream implementation details.
-
-Do not commit:
-
-- API keys
-- Secrets
-- Credentials
-- Private tokens
-- `.env` files
-
-Environment files are ignored by Git.
-
-If a future provider requires credentials, use environment variables.
-
-## Documentation
-
-Update `README.md` whenever:
-
-- A public endpoint is added
-- An endpoint changes
-- A new external provider is introduced
-- Environment variables change
-- Development commands change
-- Deployment requirements change
-
-Keep documentation aligned with the actual implementation.
-
-## Testing
-
-At minimum, manually test public endpoints with `curl`.
-
-Examples:
-
-```bash
-curl http://127.0.0.1:8787/api/health
-```
-
-```bash
-curl http://127.0.0.1:8787/api/drivers
-```
-
-```bash
-curl http://127.0.0.1:8787/api/constructors
-```
-
-Always run:
+Type checking:
 
 ```bash
 bun run typecheck
 ```
 
-before considering a TypeScript change complete.
+There is currently no separate build script.
+
+---
+
+## Server
+
+The preferred development port is:
+
+```text
+8787
+```
+
+The server automatically attempts the next available port if the preferred port is already occupied.
+
+Environment variables:
+
+```text
+PORT
+HOST
+```
+
+Defaults:
+
+```text
+PORT=8787
+HOST=127.0.0.1
+```
+
+---
+
+## API Endpoints
+
+The API currently provides:
+
+```text
+GET /api/health
+GET /api/meta
+
+GET /api/drivers
+GET /api/constructors
+
+GET /api/standings/drivers
+GET /api/standings/constructors
+
+GET /api/results/current
+GET /api/results/:season/:round
+```
+
+Race calendar and race detail routes are also provided by the race route module.
+
+Do not document an endpoint as available unless it actually exists in the current source.
+
+---
+
+## Metadata Endpoint
+
+The metadata endpoint is:
+
+```text
+GET /api/meta
+```
+
+It must accurately report:
+
+- Service name
+- API version
+- Current season
+- Provider information
+- Supported capabilities
+- Live timing status
+- Service uptime
+- Timestamps
+
+If a capability is unavailable, report it as unavailable.
+
+Do not claim that an unfinished feature is operational.
+
+---
+
+## Live Timing
+
+Live timing is currently disabled.
+
+The API must report:
+
+```text
+liveTiming.available = false
+```
+
+Do not implement fake live timing to make the frontend appear complete.
+
+A live timing source must be:
+
+1. Real.
+2. Current.
+3. Reliably accessible.
+4. Suitable for the intended deployment environment.
+5. Available without requiring a paid service if the project requirement remains free live data.
+6. Tested before being exposed through the API.
+
+Historical data must never be presented as live data.
+
+Scheduled data must never be presented as live data.
+
+---
+
+## External Requests
+
+External provider requests must have a finite timeout.
+
+An unavailable provider must not cause API requests to hang indefinitely.
+
+Provider failures should be logged and converted into controlled API responses.
+
+Do not expose unnecessary provider implementation details directly to consumers.
+
+---
+
+## Data Normalisation
+
+The provider can return inconsistent primitive types.
+
+For example:
+
+```text
+number
+```
+
+and:
+
+```text
+string
+```
+
+may both represent numeric fields.
+
+Normalise provider data into the project's TypeScript data contracts.
+
+Use explicit conversion and validation.
+
+Do not use unsafe coercion that can turn invalid data into believable numbers.
+
+---
+
+## Missing Data
+
+Missing data is valid data.
+
+If the provider returns:
+
+```text
+null
+```
+
+the API should normally preserve that `null`.
+
+Do not replace missing values with:
+
+```text
+0
+999
+---
+Unknown
+N/A
+```
+
+unless that value is genuinely part of the provider's data contract and has a clear semantic meaning.
+
+Presentation-specific fallback text belongs in the frontend, not in the data service.
+
+---
+
+## Results
+
+Race results must represent actual provider data.
+
+The `/api/results/current` endpoint may need to fall back to an earlier completed race when the newest scheduled race does not yet have results from the provider.
+
+This is acceptable.
+
+Fabricating results for a scheduled but incomplete race is not acceptable.
+
+---
+
+## Caching
+
+The current service uses in-memory caching.
+
+Current intended TTLs:
+
+```text
+Drivers              30 minutes
+Constructors         30 minutes
+Race calendar         5 minutes
+Race details         10 minutes
+Standings             1 minute
+Race results         10 minutes
+```
+
+Do not remove caching without a reason.
+
+Do not assume the cache survives process restarts.
+
+---
+
+## TypeScript
+
+Maintain strict TypeScript correctness.
+
+Avoid:
+
+- `any` without a strong reason
+- Unsafe casts
+- Suppression comments
+- Ignoring compiler errors
+
+Prefer explicit interfaces and normalisation functions.
+
+If the provider response differs from the public API contract, define a provider-specific type and normalise it before returning the public type.
+
+---
+
+## Error Handling
+
+Use appropriate HTTP status codes.
+
+General guidance:
+
+```text
+400 = invalid request parameters
+502 = upstream provider failure
+```
+
+Do not return HTTP `200` when the service failed to obtain required upstream data.
+
+Do not silently convert errors into fake data.
+
+---
+
+## Documentation
+
+Keep these documents current:
+
+```text
+README.md
+docs/notes.md
+AGENTS.md
+```
+
+`README.md` should explain how to install, run, validate and consume the API.
+
+`docs/notes.md` should record important development decisions, provider limitations, architecture changes and dated project progress.
+
+`AGENTS.md` should contain project-level development rules and constraints.
+
+When a significant architectural decision is made, add it to `docs/notes.md`.
+
+---
+
+## Testing And Validation
+
+After changing TypeScript source files, run:
+
+```bash
+bun run typecheck
+```
+
+When the server is running, manually verify:
+
+```bash
+curl -s http://127.0.0.1:8787/api/health
+```
+
+and:
+
+```bash
+curl -s http://127.0.0.1:8787/api/meta
+```
+
+For endpoint changes, test the affected endpoint with real provider data.
+
+Do not consider a feature complete merely because the TypeScript compiler passes.
+
+---
 
 ## Code Changes
 
-When modifying code:
+Prefer small, focused changes.
 
-- Prefer complete, focused changes.
-- Do not invent files or APIs that are not required.
-- Keep existing architecture intact unless there is a clear reason to change it.
-- Preserve the separation between routes, services, and models.
-- Do not move provider-specific types into shared application types unnecessarily.
-- Do not bypass the service layer from routes.
-- Do not couple the API to the Next.js UI.
+Do not refactor unrelated code while implementing a specific feature.
 
-When presenting code changes to the developer, provide the full replacement file rather than partial snippets.
+Preserve existing API contracts unless there is a clear reason to change them.
+
+When changing a response contract:
+
+1. Update the TypeScript type.
+2. Update normalisation logic.
+3. Update the route if required.
+4. Update the README.
+5. Update `docs/notes.md`.
+6. Run the typecheck.
+7. Test the endpoint.
+
+---
+
+## Production Mindset
+
+This API is intended to become a real data service.
+
+Prioritise:
+
+- Correctness
+- Honest data
+- Predictable contracts
+- Defensive external integration
+- Clear errors
+- Maintainability
+- Small surface area
+- Reliable documentation
+
+Do not prioritise visual completeness over data correctness.
+
+A missing feature is better than a misleading feature.
+
+---
 
 ## Git
 
-Use the project's commit convention:
+Use the project's commit message convention:
 
 ```text
 Type/Area: Description
@@ -463,54 +436,10 @@ Type/Area: Description
 Examples:
 
 ```text
-Feat/Races: Add race calendar endpoint
-Feat/Live: Add live session aggregation
-Fix/Drivers: Normalise driver numbers
-Docs/API: Document race endpoints
-Chore/Deps: Update Fastify
+Docs/API: Document metadata and endpoint contracts
+Feat/Results: Add current race result fallback
+Fix/Provider: Handle missing upstream race results
+Chore/Docs: Update development notes
 ```
 
-Keep commits focused.
-
-## Current Status
-
-Implemented:
-
-- Fastify server
-- Bun runtime
-- Strict TypeScript
-- Health endpoint
-- Driver endpoint
-- Constructor endpoint
-- F1 API.dev integration
-- Driver normalisation
-- Constructor normalisation
-- Upstream error handling
-- Automatic port fallback
-
-Planned:
-
-1. Race calendar
-2. Race details
-3. Driver standings
-4. Constructor standings
-5. Live session data
-6. Multiple provider support
-7. Caching
-8. Production deployment
-
-## Agent Behaviour
-
-Before implementing an external API integration, inspect the actual response.
-
-Do not guess field names.
-
-Do not expose provider-specific schemas directly to the frontend.
-
-Do not add unnecessary dependencies.
-
-Do not rewrite unrelated files.
-
-Keep the service small, explicit, and easy to maintain.
-
-The long-term goal is a reliable application-owned F1 data service that allows the Next.js frontend to remain independent of external F1 API implementations.
+Keep commits focused and descriptive.

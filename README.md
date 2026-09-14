@@ -1,278 +1,92 @@
 # F1 API
 
-A dedicated Formula 1 data service built with TypeScript, Fastify, and Bun.
+A lightweight Formula 1 data service built with **TypeScript**, **Fastify** and **Bun**.
 
-The service sits between external Formula 1 data providers and the F1 Next.js application. It fetches external data, normalises it into application-owned models, and exposes a consistent REST API for the frontend.
+The service provides a clean API layer between the Fast Girls Club F1 experience and the external Formula 1 data provider. It normalises provider responses, validates numeric fields, handles upstream failures, and caches frequently requested data.
 
-## Architecture
+## Current Status
 
-```text
-External F1 APIs
-       │
-       ▼
-    F1 API
-       │
-       ├── Fetch
-       ├── Normalise
-       ├── Validate
-       └── Serve
-       │
-       ▼
-Next.js F1 Application
-       │
-       ▼
-      UI
-```
+**Version:** `0.1.0`
+**Current season:** `2026`
+**Status:** Operational
+**Primary provider:** `f1api.dev`
 
-The F1 API is deliberately separated from the Next.js application so that external data providers are not coupled directly to the frontend.
+The service currently provides:
 
-This gives the project a single place to handle:
+- Driver data
+- Constructor data
+- Current-season race calendar
+- Race details
+- Driver championship standings
+- Constructor championship standings
+- Race results
+- Current/latest available race results
+- API health information
+- API metadata
 
-- External API integration
-- Data normalisation
-- API contracts
-- Error handling
-- Future caching
-- Future live timing aggregation
-- Additional F1 data providers
+Live timing is **not currently enabled**.
+
+No simulated, placeholder or fabricated live timing data is used.
 
 ## Technology
 
+- Bun
 - TypeScript
 - Fastify
-- Bun
-- Native `fetch`
-- REST API
-- Strict TypeScript configuration
-- F1 API.dev as the current external data provider
+- Node-compatible Web APIs
+- `f1api.dev`
 
 ## Project Structure
 
 ```text
 f1-api/
-├── .gitignore
-├── AGENTS.md
-├── bun-env.d.ts
-├── bun.lock
-├── CLAUDE.md
-├── package.json
-├── README.md
+├── docs/
+│   └── notes.md
 ├── src/
-│   ├── index.ts
 │   ├── routes/
 │   │   ├── constructors.ts
-│   │   └── drivers.ts
+│   │   ├── drivers.ts
+│   │   ├── races.ts
+│   │   ├── results.ts
+│   │   └── standings.ts
 │   ├── services/
 │   │   └── f1Api.ts
-│   └── types/
-│       └── f1.ts
-└── tsconfig.json
+│   ├── types/
+│   │   └── f1.ts
+│   └── index.ts
+├── .env
+├── .env.example
+├── AGENTS.md
+├── package.json
+├── tsconfig.json
+└── README.md
 ```
 
-## API
+## Installation
 
-### Health
-
-```text
-GET /api/health
-```
-
-Returns the health status of the F1 API service.
-
-Example:
-
-```json
-{
-  "status": "ok",
-  "service": "f1-api",
-  "port": 8787,
-  "timestamp": "2026-09-10T18:00:00.000Z"
-}
-```
-
-### Drivers
-
-```text
-GET /api/drivers
-```
-
-Returns the current season drivers using the application's own driver model.
-
-Example:
-
-```json
-{
-  "season": 2026,
-  "count": 22,
-  "drivers": [
-    {
-      "driverId": "stroll",
-      "number": "18",
-      "code": "STR",
-      "firstName": "Lance",
-      "lastName": "Stroll",
-      "fullName": "Lance Stroll",
-      "nationality": "Canada",
-      "dateOfBirth": "1998-10-29",
-      "permanentNumber": "18",
-      "url": "https://en.wikipedia.org/wiki/Lance_Stroll"
-    }
-  ]
-}
-```
-
-### Constructors
-
-```text
-GET /api/constructors
-```
-
-Returns the current season constructors using the application's own constructor model.
-
-Example:
-
-```json
-{
-  "season": 2026,
-  "count": 11,
-  "constructors": [
-    {
-      "constructorId": "mercedes",
-      "name": "Mercedes Formula 1 Team",
-      "nationality": "Germany",
-      "url": "https://en.wikipedia.org/wiki/Mercedes-Benz_in_Formula_One"
-    }
-  ]
-}
-```
-
-## External Data Provider
-
-The current external provider is:
-
-```text
-https://f1api.dev/api
-```
-
-The service currently consumes:
-
-```text
-GET /current/drivers?limit=100
-GET /current/teams?limit=100
-```
-
-The external provider's response is not exposed directly to the Next.js application.
-
-Instead, the service maps the provider response into application-owned TypeScript models.
-
-## Data Normalisation
-
-External driver data is converted into the internal `Driver` model.
-
-The service currently maps:
-
-| External field   | Internal field    |
-| ---------------- | ----------------- |
-| `driverId`       | `driverId`        |
-| `name`           | `firstName`       |
-| `surname`        | `lastName`        |
-| `name + surname` | `fullName`        |
-| `nationality`    | `nationality`     |
-| `birthday`       | `dateOfBirth`     |
-| `number`         | `number`          |
-| `number`         | `permanentNumber` |
-| `shortName`      | `code`            |
-| `url`            | `url`             |
-
-Constructor data is similarly normalised into the internal `Constructor` model.
-
-This means the Next.js application does not need to understand the external provider's schema.
-
-## Next.js Integration
-
-The main F1 Next.js application communicates with this service through an environment variable:
-
-```text
-F1_LIVE_SERVICE_URL=http://127.0.0.1:8787
-```
-
-The Next.js API layer then requests data from this service.
-
-For example:
-
-```text
-Browser
-   ↓
-Next.js
-   ↓
-/api/f1/live
-   ↓
-F1 API
-   ↓
-External F1 provider
-```
-
-This keeps external API access on the server side.
-
-The Next.js application should not directly depend on the external provider's response format.
-
-## Local Development
-
-Install dependencies:
+Install dependencies with:
 
 ```bash
 bun install
 ```
 
-Start the development server:
+## Development
+
+Start the API in development mode:
 
 ```bash
-bun --hot src/index.ts
+bun run dev
 ```
 
-The preferred port is:
+The server prefers port `8787`.
+
+If that port is already in use, the service automatically tries the next available port.
+
+The default development address is:
 
 ```text
-8787
+http://127.0.0.1:8787
 ```
-
-If that port is already in use, the service automatically attempts the next available port.
-
-You can also set a custom port:
-
-```bash
-PORT=9000 bun --hot src/index.ts
-```
-
-## Testing the API
-
-Health:
-
-```bash
-curl http://127.0.0.1:8787/api/health
-```
-
-Drivers:
-
-```bash
-curl http://127.0.0.1:8787/api/drivers
-```
-
-Constructors:
-
-```bash
-curl http://127.0.0.1:8787/api/constructors
-```
-
-## Type Checking
-
-Run:
-
-```bash
-bun run typecheck
-```
-
-This runs TypeScript without generating build output.
 
 ## Production
 
@@ -282,118 +96,340 @@ Start the service with:
 bun run start
 ```
 
-The production command runs:
+The server honours the following environment variables:
 
 ```text
-NODE_ENV=production bun src/index.ts
+PORT
+HOST
 ```
 
-## Error Handling
+Defaults:
 
-External API failures are handled by the route layer.
+```text
+PORT=8787
+HOST=127.0.0.1
+```
 
-If the upstream provider cannot be reached or returns an unsuccessful HTTP status, the service returns an appropriate `502` response to the application.
+## Validation
+
+Run the TypeScript typecheck with:
+
+```bash
+bun run typecheck
+```
+
+The project does not currently have a separate build script.
+
+A change should not be considered complete until the typecheck passes.
+
+## API
+
+### Health
+
+```http
+GET /api/health
+```
+
+Returns basic service health information.
 
 Example:
 
 ```json
 {
-  "error": "Failed to fetch F1 driver data"
+  "status": "ok",
+  "service": "f1-api",
+  "port": 8787,
+  "timestamp": "2026-09-14T02:44:34.401Z"
 }
 ```
 
-The external provider's error response is intentionally not exposed directly to the frontend.
+### Metadata
 
-## Future API
+```http
+GET /api/meta
+```
 
-The service is being built toward a broader F1 data platform.
+Returns service metadata, current season information, provider information and supported capabilities.
 
-Planned endpoints include:
+Example:
 
-```text
-GET /api/races
-GET /api/races/:round
+```json
+{
+  "service": "f1-api",
+  "version": "0.1.0",
+  "status": "ok",
+  "season": 2026,
+  "provider": {
+    "name": "f1api.dev",
+    "baseUrl": "https://f1api.dev/api"
+  },
+  "capabilities": {
+    "drivers": true,
+    "constructors": true,
+    "calendar": true,
+    "raceDetails": true,
+    "driverStandings": true,
+    "constructorStandings": true,
+    "raceResults": true,
+    "liveTiming": false
+  },
+  "liveTiming": {
+    "available": false,
+    "reason": "No verified free live timing source is currently available for this service."
+  }
+}
+```
 
+The metadata endpoint is intended to give consuming applications a reliable way to understand what the API currently supports.
+
+## Data Endpoints
+
+### Drivers
+
+```http
+GET /api/drivers
+```
+
+Returns driver data from the configured Formula 1 provider.
+
+### Constructors
+
+```http
+GET /api/constructors
+```
+
+Returns constructor/team data.
+
+### Driver Standings
+
+```http
 GET /api/standings/drivers
-GET /api/standings/constructors
-
-GET /api/live
 ```
 
-The live endpoint will eventually provide normalised real-time session data for the Next.js F1 application.
+Returns driver championship standings.
 
-## Live Data Architecture
+### Constructor Standings
 
-The intended live data architecture is:
+```http
+GET /api/standings/constructors
+```
+
+Returns constructor championship standings.
+
+### Current Race Results
+
+```http
+GET /api/results/current
+```
+
+Returns the most recent completed race for which results are available from the upstream provider.
+
+The service checks recent completed races and falls back to the latest race with available results when the newest scheduled race does not yet have provider results.
+
+### Specific Race Results
+
+```http
+GET /api/results/:season/:round
+```
+
+Example:
 
 ```text
-Multiple F1 Data Providers
-          │
-          ▼
-     F1 API Service
-          │
-          ├── Provider adapters
-          ├── Normalisation
-          ├── Validation
-          ├── Aggregation
-          └── Caching
-          │
-          ▼
-       Next.js API
-          │
-          ▼
-      F1DataHub UI
+/api/results/2026/13
 ```
 
-The service is therefore intended to become the application's dedicated F1 data layer rather than simply acting as a proxy.
+Returns the results for the requested season and round.
+
+## Data Normalisation
+
+The external provider does not always return identical primitive types.
+
+For example, numeric fields may be returned as either numbers or numeric strings.
+
+The service normalises these values before exposing them through the API.
+
+Numeric fields are converted to numbers where the application contract requires numeric data.
+
+Values that cannot be safely converted are not fabricated.
+
+Provider data that is unavailable remains unavailable.
 
 ## Caching
 
-There is currently no database or persistent cache.
+The API uses an in-memory cache to reduce unnecessary requests to the upstream provider.
 
-Caching can be introduced later once the required data sources and refresh intervals are established.
+Current cache periods include:
 
-Potential future caching targets include:
+| Data                   |      Cache |
+| ---------------------- | ---------: |
+| Drivers                | 30 minutes |
+| Constructors           | 30 minutes |
+| Race calendar          |  5 minutes |
+| Race details           | 10 minutes |
+| Championship standings |   1 minute |
+| Race results           | 10 minutes |
 
-- Driver data
-- Constructor data
-- Race calendars
-- Championship standings
-- Session information
+The cache is intentionally simple at this stage.
+
+It is process-local and is cleared when the service restarts.
+
+## Upstream Provider
+
+The current provider is:
+
+```text
+f1api.dev
+```
+
+Base API:
+
+```text
+https://f1api.dev/api
+```
+
+The service is deliberately separated from the provider so that the frontend does not need to communicate directly with the external API.
+
+This also gives the project a single place for:
+
+- Provider requests
+- Error handling
+- Timeouts
+- Caching
+- Data normalisation
+- Type definitions
+- Future provider changes
+
+## Request Timeouts
+
+Upstream requests use a finite timeout.
+
+The service must not allow an unavailable upstream provider to leave API requests hanging indefinitely.
+
+Upstream failures are converted into appropriate API errors rather than exposing raw provider failures to consumers.
+
+## Live Timing
+
+Live timing is currently disabled.
+
+The API does **not** generate fake timing information and does not pretend that historical or scheduled data is live.
+
+The current metadata response explicitly reports:
+
+```json
+{
+  "available": false
+}
+```
+
+A live timing implementation should only be added when there is a verified source that:
+
+1. Can legally and reliably be consumed by this service.
+2. Is available without requiring a paid subscription.
+3. Works reliably from the intended deployment environment.
+4. Provides sufficiently current session data.
+5. Can be implemented without fabricating missing values.
+
+Until those conditions are satisfied, `liveTiming` remains disabled.
+
+## Error Handling
+
+The API validates route parameters before making upstream requests.
+
+Invalid season and round values return a `400` response.
+
+Upstream provider failures return a `502` response.
+
+The service logs upstream failures using Fastify's logger while returning a controlled response to API consumers.
+
+## Design Principles
+
+This project follows a few important rules.
+
+### No fabricated data
+
+Data must come from a real source.
+
+Do not invent:
+
+- Drivers
+- Teams
+- Results
+- Points
+- Lap times
+- Positions
+- Session states
+- Circuit information
 - Live timing
-- Track status
 
-## Current Status
+If the upstream provider does not provide a value, the API should preserve that absence.
 
-Currently implemented:
+### Provider independence
+
+Frontend applications should consume this API rather than depending directly on the external provider.
+
+### Explicit capabilities
+
+The `/api/meta` endpoint should accurately describe what the service can currently provide.
+
+### Defensive integration
+
+External APIs can fail, change response types or temporarily lack data.
+
+The service should handle those situations without crashing or silently producing incorrect information.
+
+### Small API surface
+
+Only expose endpoints that have a clear purpose for the consuming applications.
+
+Avoid adding endpoints simply because the upstream provider exposes them.
+
+## Development Workflow
+
+Typical development workflow:
+
+```bash
+bun install
+bun run dev
+```
+
+Then validate changes with:
+
+```bash
+bun run typecheck
+```
+
+Check service health:
+
+```bash
+curl -s http://127.0.0.1:8787/api/health
+```
+
+Check API metadata:
+
+```bash
+curl -s http://127.0.0.1:8787/api/meta
+```
+
+## Current Version
+
+### `0.1.0`
+
+Initial service foundation including:
 
 - Fastify server
-- Bun runtime
-- Strict TypeScript
+- Automatic port fallback
 - Health endpoint
+- API metadata endpoint
 - Driver endpoint
 - Constructor endpoint
-- F1 API.dev integration
-- Driver normalisation
-- Constructor normalisation
-- Basic upstream error handling
-- Automatic port fallback
-
-Next development priorities:
-
-1. Race calendar
-2. Race details
-3. Driver standings
-4. Constructor standings
-5. Live session data
-6. Multiple provider support
-7. Caching
-8. Production deployment
-
-## Development Principle
-
-The F1 API owns the data contract consumed by the application.
-
-External providers may change their response structures. The goal of this service is to isolate those changes here so the Next.js application remains stable.
-
-The frontend should consume application-owned models rather than external API schemas.
+- Race calendar integration
+- Race detail integration
+- Driver standings
+- Constructor standings
+- Race results
+- Current race result lookup
+- Upstream timeout handling
+- Provider error handling
+- Response normalisation
+- In-memory caching
+- Explicit live timing capability status
