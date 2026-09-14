@@ -1,30 +1,10 @@
-import Fastify from "fastify";
-
-import { constructorsRoutes } from "./routes/constructors.ts";
-import { driversRoutes } from "./routes/drivers.ts";
-import { healthRoutes } from "./routes/health.ts";
-import { metaRoutes } from "./routes/meta.ts";
-import { racesRoutes } from "./routes/races.ts";
-import { resultsRoutes } from "./routes/results.ts";
-import { standingsRoutes } from "./routes/standings.ts";
-
-const app = Fastify({
-  logger: true,
-});
-
-const startedAt = new Date();
+import { buildApp } from "./app.ts";
 
 let activePort: number | null = null;
 
 const getActivePort = (): number | null => activePort;
 
-await healthRoutes(app, { getActivePort });
-await metaRoutes(app, { startedAt });
-await driversRoutes(app);
-await constructorsRoutes(app);
-await racesRoutes(app);
-await resultsRoutes(app);
-await standingsRoutes(app);
+const app = await buildApp({ getActivePort });
 
 const preferredPort = Number(process.env.PORT ?? 8787);
 

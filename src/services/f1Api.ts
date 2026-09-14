@@ -742,6 +742,10 @@ export async function getCurrentConstructorStandings(): Promise<{
  * Any F1ApiError (404, 502, timeout) on a given race means "try the next
  * completed race". Only non-F1ApiError failures abort the search, because
  * those indicate a programming error rather than a provider state.
+ *
+ * If no completed race has results, or no completed races exist at all,
+ * the function throws an F1ApiError with status 404. That is a
+ * client-facing "nothing to show yet" condition, not an upstream outage.
  */
 export async function getCurrentRaceResults(): Promise<RaceResults> {
   const races = await getCurrentSeasonRaces();
@@ -766,6 +770,7 @@ export async function getCurrentRaceResults(): Promise<RaceResults> {
     throw new F1ApiError(
       "No completed races are available for the current season",
       "/current",
+      404,
     );
   }
 
@@ -784,12 +789,14 @@ export async function getCurrentRaceResults(): Promise<RaceResults> {
     }
   }
 
-  throw (
-    lastError ??
-    new F1ApiError(
-      "No race results are available for the completed races in the current season",
-      "/current",
-    )
+  if (lastError !== null) {
+    throw lastError;
+  }
+
+  throw new F1ApiError(
+    "No race results are available for the completed races in the current season",
+    "/current",
+    404,
   );
 }
 

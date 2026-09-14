@@ -2,7 +2,7 @@ import type { FastifyInstance } from "fastify";
 
 const SERVICE_NAME = "f1-api";
 
-interface HealthDependencies {
+export interface HealthDependencies {
   getActivePort: () => number | null;
 }
 
