@@ -1,5 +1,11 @@
 import type { FastifyInstance } from "fastify";
-import { getCurrentSeasonRaces, getRaceByRound } from "../services/f1Api.ts";
+
+import {
+  F1ApiError,
+  getCurrentSeason,
+  getCurrentSeasonRaces,
+  getRaceByRound,
+} from "../services/f1Api.ts";
 
 interface RaceRoundParams {
   round: string;
@@ -10,8 +16,10 @@ export async function racesRoutes(app: FastifyInstance): Promise<void> {
     try {
       const races = await getCurrentSeasonRaces();
 
+      const season = races[0]?.season ?? (await getCurrentSeason());
+
       return reply.send({
-        season: races[0]?.season ?? new Date().getFullYear(),
+        season,
         count: races.length,
         races,
       });
@@ -36,14 +44,8 @@ export async function racesRoutes(app: FastifyInstance): Promise<void> {
       }
 
       try {
-        const season = new Date().getFullYear();
+        const season = await getCurrentSeason();
         const race = await getRaceByRound(season, round);
-
-        if (!race) {
-          return reply.status(404).send({
-            error: `Race round ${round} was not found`,
-          });
-        }
 
         return reply.send({
           season,
@@ -51,6 +53,12 @@ export async function racesRoutes(app: FastifyInstance): Promise<void> {
           race,
         });
       } catch (error) {
+        if (error instanceof F1ApiError && error.status === 404) {
+          return reply.status(404).send({
+            error: `Race round ${round} was not found`,
+          });
+        }
+
         app.log.error(error, `Failed to fetch F1 race round ${round}`);
 
         return reply.status(502).send({

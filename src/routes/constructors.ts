@@ -1,13 +1,20 @@
 import type { FastifyInstance } from "fastify";
-import { getCurrentSeasonConstructors } from "../services/f1Api.ts";
+
+import {
+  getCurrentSeason,
+  getCurrentSeasonConstructors,
+} from "../services/f1Api.ts";
 
 export async function constructorsRoutes(app: FastifyInstance): Promise<void> {
   app.get("/api/constructors", async (_request, reply) => {
     try {
-      const constructors = await getCurrentSeasonConstructors();
+      const [season, constructors] = await Promise.all([
+        getCurrentSeason(),
+        getCurrentSeasonConstructors(),
+      ]);
 
       return reply.send({
-        season: new Date().getFullYear(),
+        season,
         count: constructors.length,
         constructors,
       });

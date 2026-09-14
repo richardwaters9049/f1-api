@@ -24,7 +24,7 @@ const CACHE_TTL = {
   race: 10 * 60 * 1000,
   standings: 60 * 1000,
   results: 10 * 60 * 1000,
-};
+} as const;
 
 interface F1ApiResponse<T> {
   api: string;
@@ -146,6 +146,12 @@ interface F1ApiRacesResponse {
   races: F1ApiRace[];
 }
 
+/**
+ * The provider's `/season/round` endpoint returns a single race object
+ * under the key `races` (plural). The key name is misleading but is the
+ * provider's actual contract. Do not rename this field without verifying
+ * against a live provider response.
+ */
 interface F1ApiRaceResponse {
   season?: number | string;
   races: F1ApiRace;
@@ -231,7 +237,7 @@ interface F1ApiRaceResultsResponse {
   races: F1ApiRaceResultsRace;
 }
 
-class F1ApiError extends Error {
+export class F1ApiError extends Error {
   readonly status: number | null;
   readonly path: string;
 
@@ -280,6 +286,14 @@ function toStringOrNull(
   return String(value);
 }
 
+function pruneExpiredCache(now: number): void {
+  for (const [key, entry] of cache) {
+    if (entry.expiresAt <= now) {
+      cache.delete(key);
+    }
+  }
+}
+
 function getCached<T>(key: string): T | null {
   const entry = cache.get(key);
 
@@ -296,10 +310,25 @@ function getCached<T>(key: string): T | null {
 }
 
 function setCached<T>(key: string, value: T, ttl: number): void {
+  const now = Date.now();
+
   cache.set(key, {
     value,
-    expiresAt: Date.now() + ttl,
+    expiresAt: now + ttl,
   });
+
+  pruneExpiredCache(now);
+}
+
+/**
+ * Clear the in-memory cache.
+ *
+ * Exposed for tests, which need a clean cache between cases. In normal
+ * operation the cache expires on its own TTL schedule and this is never
+ * called.
+ */
+export function clearCache(): void {
+  cache.clear();
 }
 
 async function f1ApiFetch<T>(path: string): Promise<T> {
@@ -445,15 +474,13 @@ function normaliseRaceWinner(
     return null;
   }
 
-  const number = toNumber(winner.number);
-
   return {
     driverId: winner.driverId,
     firstName: winner.name,
     lastName: winner.surname,
     fullName: `${winner.name} ${winner.surname}`,
     nationality: winner.nationality,
-    number,
+    number: toNumber(winner.number),
     code: winner.shortName,
     dateOfBirth: winner.birthday,
     url: winner.url,
@@ -498,8 +525,6 @@ function normaliseRace(race: F1ApiRace, season: number): Race {
 function normaliseDriverStanding(
   standing: F1ApiDriverStanding,
 ): DriverStanding {
-  const driverNumber = toNumber(standing.driver.number);
-
   return {
     classificationId: toRequiredNumber(standing.classificationId),
     position: toNumber(standing.position),
@@ -508,11 +533,12 @@ function normaliseDriverStanding(
     driverId: standing.driverId,
     teamId: standing.teamId,
     driver: {
+      driverId: standing.driver.driverId,
       firstName: standing.driver.name,
       lastName: standing.driver.surname,
       fullName: `${standing.driver.name} ${standing.driver.surname}`,
       nationality: standing.driver.nationality,
-      number: driverNumber,
+      number: toNumber(standing.driver.number),
       code: standing.driver.shortName,
       dateOfBirth: standing.driver.birthday,
       url: standing.driver.url,
@@ -554,8 +580,6 @@ function normaliseConstructorStanding(
 }
 
 function normaliseRaceResult(result: F1ApiRaceResult): RaceResult {
-  const driverNumber = toNumber(result.driver.number);
-
   return {
     position: toNumber(result.position),
     points: toRequiredNumber(result.points),
@@ -569,7 +593,7 @@ function normaliseRaceResult(result: F1ApiRaceResult): RaceResult {
       lastName: result.driver.surname,
       fullName: `${result.driver.name} ${result.driver.surname}`,
       nationality: result.driver.nationality,
-      number: driverNumber,
+      number: toNumber(result.driver.number),
       code: result.driver.shortName,
       dateOfBirth: result.driver.birthday,
       url: result.driver.url,
@@ -602,6 +626,27 @@ function normaliseRaceResults(data: F1ApiRaceResultsResponse): RaceResults {
   };
 }
 
+/**
+ * Resolve the current Formula 1 season from the provider.
+ *
+ * The provider's `/current` endpoint returns the season it considers
+ * current. We cache the resolved season using the same TTL as the race
+ * calendar, so this is effectively free after the first call.
+ *
+ * Routes must use this rather than `new Date().getFullYear()`, because
+ * the provider's notion of "current season" can lag the calendar year
+ * around the off-season.
+ */
+export async function getCurrentSeason(): Promise<number> {
+  const data = await getCachedOrFetch<F1ApiRacesResponse>(
+    "races:current",
+    "/current?limit=100",
+    CACHE_TTL.races,
+  );
+
+  return toRequiredNumber(data.season);
+}
+
 export async function getCurrentSeasonDrivers(): Promise<Driver[]> {
   const data = await getCachedOrFetch<F1ApiDriversResponse>(
     "drivers:current",
@@ -620,14 +665,6 @@ export async function getCurrentSeasonConstructors(): Promise<Constructor[]> {
   );
 
   return data.teams.map(normaliseConstructor);
-}
-
-export async function getDrivers(): Promise<Driver[]> {
-  return getCurrentSeasonDrivers();
-}
-
-export async function getConstructors(): Promise<Constructor[]> {
-  return getCurrentSeasonConstructors();
 }
 
 export async function getCurrentSeasonRaces(): Promise<Race[]> {
@@ -694,6 +731,18 @@ export async function getCurrentConstructorStandings(): Promise<{
   };
 }
 
+/**
+ * Return results for the most recent completed race for which the provider
+ * actually has results.
+ *
+ * The provider can publish a race in the calendar before results are
+ * available. Walking backwards through completed races and trying each one
+ * lets us return the newest real data without fabricating anything.
+ *
+ * Any F1ApiError (404, 502, timeout) on a given race means "try the next
+ * completed race". Only non-F1ApiError failures abort the search, because
+ * those indicate a programming error rather than a provider state.
+ */
 export async function getCurrentRaceResults(): Promise<RaceResults> {
   const races = await getCurrentSeasonRaces();
 
@@ -707,7 +756,9 @@ export async function getCurrentRaceResults(): Promise<RaceResults> {
         return false;
       }
 
-      return new Date(raceDate).getTime() <= now;
+      const time = new Date(raceDate).getTime();
+
+      return Number.isFinite(time) && time <= now;
     })
     .sort((a, b) => b.round - a.round);
 
@@ -718,11 +769,14 @@ export async function getCurrentRaceResults(): Promise<RaceResults> {
     );
   }
 
+  let lastError: F1ApiError | null = null;
+
   for (const race of completedRaces) {
     try {
       return await getRaceResults(race.season, race.round);
     } catch (error) {
-      if (error instanceof F1ApiError && error.status === 404) {
+      if (error instanceof F1ApiError) {
+        lastError = error;
         continue;
       }
 
@@ -730,9 +784,12 @@ export async function getCurrentRaceResults(): Promise<RaceResults> {
     }
   }
 
-  throw new F1ApiError(
-    "No race results are available for the completed races in the current season",
-    "/current",
+  throw (
+    lastError ??
+    new F1ApiError(
+      "No race results are available for the completed races in the current season",
+      "/current",
+    )
   );
 }
 

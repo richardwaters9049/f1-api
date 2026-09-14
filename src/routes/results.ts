@@ -1,5 +1,10 @@
 import type { FastifyInstance } from "fastify";
-import { getCurrentRaceResults, getRaceResults } from "../services/f1Api.ts";
+
+import {
+  F1ApiError,
+  getCurrentRaceResults,
+  getRaceResults,
+} from "../services/f1Api.ts";
 
 export async function resultsRoutes(app: FastifyInstance): Promise<void> {
   app.get("/api/results/current", async (_request, reply) => {
@@ -8,6 +13,12 @@ export async function resultsRoutes(app: FastifyInstance): Promise<void> {
 
       return reply.send(results);
     } catch (error) {
+      if (error instanceof F1ApiError && error.status === 404) {
+        return reply.status(404).send({
+          error: "No race results are available yet for the current season",
+        });
+      }
+
       app.log.error(error, "Failed to fetch current race results");
 
       return reply.status(502).send({
@@ -41,6 +52,12 @@ export async function resultsRoutes(app: FastifyInstance): Promise<void> {
 
       return reply.send(results);
     } catch (error) {
+      if (error instanceof F1ApiError && error.status === 404) {
+        return reply.status(404).send({
+          error: `No results found for season ${season}, round ${round}`,
+        });
+      }
+
       app.log.error(
         error,
         `Failed to fetch race results for ${season}/${round}`,

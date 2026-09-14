@@ -1,13 +1,20 @@
 import type { FastifyInstance } from "fastify";
-import { getCurrentSeasonDrivers } from "../services/f1Api.ts";
+
+import {
+  getCurrentSeason,
+  getCurrentSeasonDrivers,
+} from "../services/f1Api.ts";
 
 export async function driversRoutes(app: FastifyInstance): Promise<void> {
   app.get("/api/drivers", async (_request, reply) => {
     try {
-      const drivers = await getCurrentSeasonDrivers();
+      const [season, drivers] = await Promise.all([
+        getCurrentSeason(),
+        getCurrentSeasonDrivers(),
+      ]);
 
       return reply.send({
-        season: new Date().getFullYear(),
+        season,
         count: drivers.length,
         drivers,
       });

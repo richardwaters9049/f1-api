@@ -1,3 +1,15 @@
+export interface DriverSummary {
+  driverId: string;
+  firstName: string;
+  lastName: string;
+  fullName: string;
+  nationality: string;
+  number: number | null;
+  code: string | null;
+  dateOfBirth: string | null;
+  url: string | null;
+}
+
 export interface Driver {
   driverId: string;
   number: string | null;
@@ -18,6 +30,16 @@ export interface Constructor {
   url: string | null;
 }
 
+export interface TeamSummary {
+  teamId?: string;
+  name: string;
+  nationality: string;
+  firstAppearance: number | null;
+  constructorsChampionships: number | null;
+  driversChampionships: number | null;
+  url: string | null;
+}
+
 export interface DriverStanding {
   classificationId: number;
   position: number | null;
@@ -25,25 +47,8 @@ export interface DriverStanding {
   wins: number;
   driverId: string;
   teamId: string;
-  driver: {
-    firstName: string;
-    lastName: string;
-    fullName: string;
-    nationality: string;
-    number: number | null;
-    code: string | null;
-    dateOfBirth: string | null;
-    url: string | null;
-  };
-  team: {
-    teamId: string;
-    name: string;
-    nationality: string;
-    firstAppearance: number | null;
-    constructorsChampionships: number | null;
-    driversChampionships: number | null;
-    url: string | null;
-  };
+  driver: DriverSummary;
+  team: TeamSummary & { teamId: string };
 }
 
 export interface ConstructorStanding {
@@ -52,14 +57,7 @@ export interface ConstructorStanding {
   points: number;
   wins: number;
   teamId: string;
-  team: {
-    name: string;
-    nationality: string;
-    firstAppearance: number | null;
-    constructorsChampionships: number | null;
-    driversChampionships: number | null;
-    url: string | null;
-  };
+  team: TeamSummary;
 }
 
 export interface RaceScheduleSession {
@@ -92,17 +90,7 @@ export interface Circuit {
   url: string | null;
 }
 
-export interface RaceWinner {
-  driverId: string;
-  firstName: string;
-  lastName: string;
-  fullName: string;
-  nationality: string;
-  number: number | null;
-  code: string | null;
-  dateOfBirth: string | null;
-  url: string | null;
-}
+export interface RaceWinner extends DriverSummary {}
 
 export interface ConstructorWinner {
   constructorId: string;
@@ -133,17 +121,7 @@ export interface Race {
   constructorWinner: ConstructorWinner | null;
 }
 
-export interface RaceResultDriver {
-  driverId: string;
-  firstName: string;
-  lastName: string;
-  fullName: string;
-  nationality: string;
-  number: number | null;
-  code: string | null;
-  dateOfBirth: string | null;
-  url: string | null;
-}
+export interface RaceResultDriver extends DriverSummary {}
 
 export interface RaceResultConstructor {
   constructorId: string;
