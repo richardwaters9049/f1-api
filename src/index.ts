@@ -2,6 +2,7 @@ import Fastify from "fastify";
 import { constructorsRoutes } from "./routes/constructors.ts";
 import { driversRoutes } from "./routes/drivers.ts";
 import { racesRoutes } from "./routes/races.ts";
+import { resultsRoutes } from "./routes/results.ts";
 import { standingsRoutes } from "./routes/standings.ts";
 
 const app = Fastify({
@@ -22,6 +23,7 @@ app.get("/api/health", async () => {
 await driversRoutes(app);
 await constructorsRoutes(app);
 await racesRoutes(app);
+await resultsRoutes(app);
 await standingsRoutes(app);
 
 const preferredPort = Number(process.env.PORT ?? 8787);
@@ -40,6 +42,7 @@ async function startServer(): Promise<void> {
       activePort = port;
 
       console.log(`F1 API running at http://${host}:${port}`);
+
       return;
     } catch (error) {
       if (
@@ -48,6 +51,7 @@ async function startServer(): Promise<void> {
         error.code === "EADDRINUSE"
       ) {
         console.warn(`Port ${port} is already in use. Trying ${port + 1}...`);
+
         port += 1;
         continue;
       }

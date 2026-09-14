@@ -132,3 +132,48 @@ export interface Race {
   winner: RaceWinner | null;
   constructorWinner: ConstructorWinner | null;
 }
+
+export interface RaceResultDriver {
+  driverId: string;
+  firstName: string;
+  lastName: string;
+  fullName: string;
+  nationality: string;
+  number: number | null;
+  code: string | null;
+  dateOfBirth: string | null;
+  url: string | null;
+}
+
+export interface RaceResultConstructor {
+  constructorId: string;
+  name: string;
+  nationality: string;
+  firstAppearance: number | null;
+  constructorsChampionships: number | null;
+  driversChampionships: number | null;
+  url: string | null;
+}
+
+export interface RaceResult {
+  position: number | null;
+  points: number;
+  grid: number | null;
+  time: string | null;
+  fastestLap: string | null;
+  retired: string | null;
+  driver: RaceResultDriver;
+  constructor: RaceResultConstructor;
+}
+
+export interface RaceResults {
+  raceId: string;
+  raceName: string;
+  season: number;
+  round: number;
+  date: string | null;
+  time: string | null;
+  url: string | null;
+  circuit: Circuit;
+  results: RaceResult[];
+}
