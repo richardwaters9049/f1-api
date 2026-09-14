@@ -1,6 +1,7 @@
 import Fastify from "fastify";
 import { constructorsRoutes } from "./routes/constructors.ts";
 import { driversRoutes } from "./routes/drivers.ts";
+import { racesRoutes } from "./routes/races.ts";
 
 const app = Fastify({
   logger: true,
@@ -19,6 +20,7 @@ app.get("/api/health", async () => {
 
 await driversRoutes(app);
 await constructorsRoutes(app);
+await racesRoutes(app);
 
 const preferredPort = Number(process.env.PORT ?? 8787);
 const host = process.env.HOST ?? "127.0.0.1";
