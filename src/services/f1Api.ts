@@ -1,8 +1,10 @@
 import type {
-  Circuit,
   Constructor,
-  ConstructorWinner,
+  ConstructorStanding,
   Driver,
+  DriverStanding,
+  Circuit,
+  ConstructorWinner,
   Race,
   RaceSchedule,
   RaceScheduleSession,
@@ -38,6 +40,63 @@ interface F1ApiDriversResponse {
 
 interface F1ApiTeamsResponse {
   teams: F1ApiTeam[];
+}
+
+interface F1ApiStandingDriver {
+  classificationId: number;
+  driverId: string;
+  teamId: string;
+  points: number;
+  position: number | null;
+  wins: number;
+  driver: {
+    name: string;
+    surname: string;
+    nationality: string;
+    birthday?: string | null;
+    number?: number | null;
+    shortName?: string | null;
+    url?: string | null;
+  };
+  team: {
+    teamId: string;
+    teamName: string;
+    country: string;
+    firstAppareance?: number | null;
+    constructorsChampionships?: number | null;
+    driversChampionships?: number | null;
+    url?: string | null;
+  };
+}
+
+interface F1ApiStandingConstructor {
+  classificationId: number;
+  teamId: string;
+  points: number;
+  position: number | null;
+  wins: number;
+  team: {
+    teamName: string;
+    country: string;
+    firstAppareance?: number | null;
+    constructorsChampionships?: number | null;
+    driversChampionships?: number | null;
+    url?: string | null;
+  };
+}
+
+interface F1ApiDriverStandingsResponse {
+  season: number;
+  championshipId: string;
+  total: number;
+  drivers_championship: F1ApiStandingDriver[];
+}
+
+interface F1ApiConstructorStandingsResponse {
+  season: number;
+  championshipId: string;
+  total: number;
+  constructors_championship: F1ApiStandingConstructor[];
 }
 
 interface F1ApiScheduleSession {
@@ -138,6 +197,60 @@ async function f1ApiFetch<T>(endpoint: string): Promise<T> {
   }
 
   return response.json() as Promise<T>;
+}
+
+function normaliseDriverStanding(
+  standing: F1ApiStandingDriver,
+): DriverStanding {
+  return {
+    classificationId: standing.classificationId,
+    position: standing.position,
+    points: standing.points,
+    wins: standing.wins,
+    driverId: standing.driverId,
+    teamId: standing.teamId,
+    driver: {
+      firstName: standing.driver.name,
+      lastName: standing.driver.surname,
+      fullName: `${standing.driver.name} ${standing.driver.surname}`.trim(),
+      nationality: standing.driver.nationality,
+      number: standing.driver.number ?? null,
+      code: standing.driver.shortName ?? null,
+      dateOfBirth: standing.driver.birthday ?? null,
+      url: standing.driver.url ?? null,
+    },
+    team: {
+      teamId: standing.team.teamId,
+      name: standing.team.teamName,
+      nationality: standing.team.country,
+      firstAppearance: standing.team.firstAppareance ?? null,
+      constructorsChampionships:
+        standing.team.constructorsChampionships ?? null,
+      driversChampionships: standing.team.driversChampionships ?? null,
+      url: standing.team.url ?? null,
+    },
+  };
+}
+
+function normaliseConstructorStanding(
+  standing: F1ApiStandingConstructor,
+): ConstructorStanding {
+  return {
+    classificationId: standing.classificationId,
+    position: standing.position,
+    points: standing.points,
+    wins: standing.wins,
+    teamId: standing.teamId,
+    team: {
+      name: standing.team.teamName,
+      nationality: standing.team.country,
+      firstAppearance: standing.team.firstAppareance ?? null,
+      constructorsChampionships:
+        standing.team.constructorsChampionships ?? null,
+      driversChampionships: standing.team.driversChampionships ?? null,
+      url: standing.team.url ?? null,
+    },
+  };
 }
 
 function normaliseScheduleSession(
@@ -279,6 +392,38 @@ export async function getCurrentSeasonConstructors(): Promise<Constructor[]> {
     nationality: team.teamNationality,
     url: team.url ?? null,
   }));
+}
+
+export async function getCurrentDriverStandings(): Promise<{
+  season: number;
+  championshipId: string;
+  standings: DriverStanding[];
+}> {
+  const data = await f1ApiFetch<F1ApiDriverStandingsResponse>(
+    "/current/drivers-championship?limit=100",
+  );
+
+  return {
+    season: data.season,
+    championshipId: data.championshipId,
+    standings: data.drivers_championship.map(normaliseDriverStanding),
+  };
+}
+
+export async function getCurrentConstructorStandings(): Promise<{
+  season: number;
+  championshipId: string;
+  standings: ConstructorStanding[];
+}> {
+  const data = await f1ApiFetch<F1ApiConstructorStandingsResponse>(
+    "/current/constructors-championship?limit=100",
+  );
+
+  return {
+    season: data.season,
+    championshipId: data.championshipId,
+    standings: data.constructors_championship.map(normaliseConstructorStanding),
+  };
 }
 
 export async function getCurrentSeasonRaces(): Promise<Race[]> {

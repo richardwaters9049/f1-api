@@ -18,6 +18,50 @@ export interface Constructor {
   url: string | null;
 }
 
+export interface DriverStanding {
+  classificationId: number;
+  position: number | null;
+  points: number;
+  wins: number;
+  driverId: string;
+  teamId: string;
+  driver: {
+    firstName: string;
+    lastName: string;
+    fullName: string;
+    nationality: string;
+    number: number | null;
+    code: string | null;
+    dateOfBirth: string | null;
+    url: string | null;
+  };
+  team: {
+    teamId: string;
+    name: string;
+    nationality: string;
+    firstAppearance: number | null;
+    constructorsChampionships: number | null;
+    driversChampionships: number | null;
+    url: string | null;
+  };
+}
+
+export interface ConstructorStanding {
+  classificationId: number;
+  position: number | null;
+  points: number;
+  wins: number;
+  teamId: string;
+  team: {
+    name: string;
+    nationality: string;
+    firstAppearance: number | null;
+    constructorsChampionships: number | null;
+    driversChampionships: number | null;
+    url: string | null;
+  };
+}
+
 export interface RaceScheduleSession {
   date: string | null;
   time: string | null;
