@@ -1,4 +1,5 @@
 import { buildApp } from "./app.ts";
+import { f1LiveTiming } from "./services/f1-live-timing.ts";
 
 let activePort: number | null = null;
 
@@ -24,6 +25,8 @@ async function startServer(): Promise<void> {
 
       console.log(`F1 API running at http://${host}:${port}`);
 
+      void f1LiveTiming.start();
+
       return;
     } catch (error) {
       if (
@@ -44,3 +47,20 @@ async function startServer(): Promise<void> {
 }
 
 await startServer();
+
+async function shutdown(signal: string): Promise<void> {
+  console.log(`[F1 API] ${signal} received. Shutting down...`);
+
+  await f1LiveTiming.stop();
+  await app.close();
+
+  process.exit(0);
+}
+
+process.on("SIGINT", () => {
+  void shutdown("SIGINT");
+});
+
+process.on("SIGTERM", () => {
+  void shutdown("SIGTERM");
+});

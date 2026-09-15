@@ -7,6 +7,7 @@ import { metaRoutes } from "./routes/meta.ts";
 import { racesRoutes } from "./routes/races.ts";
 import { resultsRoutes } from "./routes/results.ts";
 import { standingsRoutes } from "./routes/standings.ts";
+import { liveTimingRoutes } from "./routes-live-timing.ts";
 
 export interface BuildAppOptions {
   logger?: boolean;
@@ -32,6 +33,7 @@ export async function buildApp(
   await racesRoutes(app);
   await resultsRoutes(app);
   await standingsRoutes(app);
+  await liveTimingRoutes(app);
 
   return app;
 }
