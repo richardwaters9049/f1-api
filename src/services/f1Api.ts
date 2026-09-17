@@ -583,6 +583,7 @@ function normaliseRaceIdentity(race: Race): Race {
   const namedLocation = match[2].trim();
   const statedCountry = match[3].trim();
   const year = match[4].trim();
+
   const circuitCountry = race.circuit.country.trim();
 
   const statedCountryMatchesCircuit =
@@ -601,7 +602,6 @@ function normaliseRaceIdentity(race: Race): Race {
     .replace(/^_+|_+$/g, "");
 
   const normalisedRaceId = `${normalisedCountry}_${race.season}`;
-
   const normalisedRaceName = `${prefix} ${circuitCountry} Grand Prix ${year}`;
 
   return {
@@ -843,9 +843,11 @@ export async function getCurrentSeasonDrivers(): Promise<Driver[]> {
 }
 
 export async function getCurrentSeasonConstructors(): Promise<Constructor[]> {
+  const season = await getCurrentSeason();
+
   const data = await getCachedOrFetch<F1ApiTeamsResponse>(
-    "constructors:current",
-    "/current/constructors?limit=100",
+    `constructors:${season}`,
+    `/${season}/teams?limit=100`,
     CACHE_TTL.constructors,
   );
 
