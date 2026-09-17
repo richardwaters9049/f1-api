@@ -14,7 +14,6 @@ import type {
 } from "../types/f1.ts";
 
 const F1_API_BASE_URL = "https://f1api.dev/api";
-
 const REQUEST_TIMEOUT_MS = 10_000;
 
 const CACHE_TTL = {
@@ -73,10 +72,12 @@ interface F1ApiTeamsResponse {
 
 interface F1ApiCircuit {
   circuitId: string;
-  circuitName: string;
+  circuitName?: string;
+  name?: string;
   country: string;
   city: string;
-  length: number | string | null;
+  length?: number | string | null;
+  circuitLength?: number | string | null;
   lapRecord: string | null;
   firstParticipationYear: number | string | null;
   corners: number | string | null;
@@ -122,6 +123,18 @@ interface F1ApiConstructorWinner {
   url: string | null;
 }
 
+interface F1ApiFastestLap {
+  time: string | null;
+  driverId: string | null;
+  constructorId: string | null;
+}
+
+interface F1ApiProviderFastestLap {
+  fast_lap: string | null;
+  fast_lap_driver_id: string | null;
+  fast_lap_team_id: string | null;
+}
+
 interface F1ApiRace {
   raceId: string;
   championshipId: string;
@@ -132,38 +145,32 @@ interface F1ApiRace {
   schedule: F1ApiRaceSchedule;
   laps: number | string | null;
   circuit: F1ApiCircuit;
-  fastestLap: {
-    time: string | null;
-    driverId: string | null;
-    constructorId: string | null;
-  } | null;
+  fastestLap?: F1ApiFastestLap | null;
+  fast_lap?: F1ApiProviderFastestLap;
   winner: F1ApiRaceWinner | null;
-  constructorWinner: F1ApiConstructorWinner | null;
+  constructorWinner?: F1ApiConstructorWinner | null;
+  teamWinner?: F1ApiConstructorWinner | null;
 }
 
 interface F1ApiRacesResponse {
   season: number | string;
-  races: F1ApiRace[];
+  race?: F1ApiRace[];
+  races?: F1ApiRace[];
 }
 
-/**
- * The provider's `/season/round` endpoint returns a single race object
- * under the key `races` (plural). The key name is misleading but is the
- * provider's actual contract. Do not rename this field without verifying
- * against a live provider response.
- */
 interface F1ApiRaceResponse {
   season?: number | string;
-  races: F1ApiRace;
+  race?: F1ApiRace[];
+  races?: F1ApiRace | F1ApiRace[];
 }
 
 interface F1ApiDriverStanding {
   classificationId: number | string;
+  position: number | string | null;
+  points: number | string;
+  wins: number | string;
   driverId: string;
   teamId: string;
-  points: number | string;
-  position: number | string | null;
-  wins: number | string;
   driver: F1ApiDriver;
   team: F1ApiTeam;
 }
@@ -176,10 +183,10 @@ interface F1ApiDriverStandingsResponse {
 
 interface F1ApiConstructorStanding {
   classificationId: number | string;
-  teamId: string;
-  points: number | string;
   position: number | string | null;
+  points: number | string;
   wins: number | string;
+  teamId: string;
   team: F1ApiTeam;
 }
 
@@ -228,13 +235,14 @@ interface F1ApiRaceResultsRace {
   date: string | null;
   time: string | null;
   url: string | null;
-  circuit: F1ApiCircuit;
+  circuit: F1ApiCircuit | F1ApiCircuit[];
   results: F1ApiRaceResult[];
 }
 
 interface F1ApiRaceResultsResponse {
   season: number | string;
-  races: F1ApiRaceResultsRace;
+  race?: F1ApiRaceResultsRace[];
+  races?: F1ApiRaceResultsRace | F1ApiRaceResultsRace[];
 }
 
 export class F1ApiError extends Error {
@@ -250,12 +258,8 @@ export class F1ApiError extends Error {
 }
 
 function toNumber(value: number | string | null | undefined): number | null {
-  if (value === null || value === undefined) {
+  if (value === null || value === undefined || value === "") {
     return null;
-  }
-
-  if (typeof value === "number") {
-    return Number.isFinite(value) ? value : null;
   }
 
   const parsed = Number(value);
@@ -264,13 +268,10 @@ function toNumber(value: number | string | null | undefined): number | null {
 }
 
 function toRequiredNumber(value: number | string): number {
-  const parsed = toNumber(value);
+  const parsed = Number(value);
 
-  if (parsed === null) {
-    throw new F1ApiError(
-      `F1 API returned an invalid numeric value: ${String(value)}`,
-      "normalisation",
-    );
+  if (!Number.isFinite(parsed)) {
+    throw new Error(`Expected numeric value but received: ${value}`);
   }
 
   return parsed;
@@ -279,7 +280,7 @@ function toRequiredNumber(value: number | string): number {
 function toStringOrNull(
   value: string | number | null | undefined,
 ): string | null {
-  if (value === null || value === undefined) {
+  if (value === null || value === undefined || value === "") {
     return null;
   }
 
@@ -287,7 +288,7 @@ function toStringOrNull(
 }
 
 function pruneExpiredCache(now: number): void {
-  for (const [key, entry] of cache) {
+  for (const [key, entry] of cache.entries()) {
     if (entry.expiresAt <= now) {
       cache.delete(key);
     }
@@ -312,21 +313,14 @@ function getCached<T>(key: string): T | null {
 function setCached<T>(key: string, value: T, ttl: number): void {
   const now = Date.now();
 
+  pruneExpiredCache(now);
+
   cache.set(key, {
     value,
     expiresAt: now + ttl,
   });
-
-  pruneExpiredCache(now);
 }
 
-/**
- * Clear the in-memory cache.
- *
- * Exposed for tests, which need a clean cache between cases. In normal
- * operation the cache expires on its own TTL schedule and this is never
- * called.
- */
 export function clearCache(): void {
   cache.clear();
 }
@@ -338,48 +332,50 @@ async function f1ApiFetch<T>(path: string): Promise<T> {
 
   try {
     response = await fetch(url, {
-      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       headers: {
         Accept: "application/json",
       },
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     });
   } catch (error) {
     if (error instanceof DOMException && error.name === "TimeoutError") {
       throw new F1ApiError(
-        `F1 API request timed out after ${REQUEST_TIMEOUT_MS}ms: ${path}`,
+        `F1 API request timed out after ${REQUEST_TIMEOUT_MS}ms`,
         path,
       );
     }
 
-    if (error instanceof Error) {
-      throw new F1ApiError(`F1 API request failed: ${error.message}`, path);
-    }
+    const message =
+      error instanceof Error ? error.message : "Unknown upstream error";
 
-    throw new F1ApiError(`F1 API request failed: ${path}`, path);
+    throw new F1ApiError(`F1 API request failed: ${message}`, path);
   }
 
   if (!response.ok) {
     throw new F1ApiError(
-      `F1 API request failed with status ${response.status}: ${path}`,
+      `F1 API returned HTTP ${response.status}`,
       path,
       response.status,
     );
   }
 
-  let payload: T | F1ApiResponse<T>;
+  let payload: unknown;
 
   try {
-    payload = (await response.json()) as T | F1ApiResponse<T>;
-  } catch {
+    payload = await response.json();
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Unknown JSON parsing error";
+
     throw new F1ApiError(
-      `F1 API returned invalid JSON: ${path}`,
+      `F1 API returned invalid JSON: ${message}`,
       path,
       response.status,
     );
   }
 
-  if (payload && typeof payload === "object" && "data" in payload) {
-    return payload.data;
+  if (typeof payload === "object" && payload !== null && "data" in payload) {
+    return (payload as F1ApiResponse<T>).data;
   }
 
   return payload as T;
@@ -430,12 +426,18 @@ function normaliseConstructor(team: F1ApiTeam): Constructor {
 }
 
 function normaliseCircuit(circuit: F1ApiCircuit): Circuit {
+  const circuitName = circuit.circuitName ?? circuit.name;
+
+  if (!circuitName) {
+    throw new Error(`F1 API circuit ${circuit.circuitId} has no circuit name`);
+  }
+
   return {
     circuitId: circuit.circuitId,
-    name: circuit.circuitName,
+    name: circuitName,
     country: circuit.country,
     city: circuit.city,
-    length: toStringOrNull(circuit.length),
+    length: toStringOrNull(circuit.length ?? circuit.circuitLength),
     lapRecord: circuit.lapRecord,
     firstParticipationYear: toNumber(circuit.firstParticipationYear),
     corners: toNumber(circuit.corners),
@@ -444,6 +446,18 @@ function normaliseCircuit(circuit: F1ApiCircuit): Circuit {
     fastestLapYear: toNumber(circuit.fastestLapYear),
     url: circuit.url,
   };
+}
+
+function normaliseResultCircuit(
+  circuit: F1ApiCircuit | F1ApiCircuit[],
+): Circuit {
+  const resolvedCircuit = Array.isArray(circuit) ? circuit[0] : circuit;
+
+  if (!resolvedCircuit) {
+    throw new Error("F1 API race results contained no circuit data");
+  }
+
+  return normaliseCircuit(resolvedCircuit);
 }
 
 function normaliseScheduleSession(
@@ -505,6 +519,22 @@ function normaliseConstructorWinner(
   };
 }
 
+function normaliseFastestLap(race: F1ApiRace): Race["fastestLap"] {
+  if (race.fastestLap !== undefined) {
+    return race.fastestLap;
+  }
+
+  if (!race.fast_lap) {
+    return null;
+  }
+
+  return {
+    time: race.fast_lap.fast_lap,
+    driverId: race.fast_lap.fast_lap_driver_id,
+    constructorId: race.fast_lap.fast_lap_team_id,
+  };
+}
+
 function normaliseRace(race: F1ApiRace, season: number): Race {
   return {
     raceId: race.raceId,
@@ -516,9 +546,68 @@ function normaliseRace(race: F1ApiRace, season: number): Race {
     schedule: normaliseRaceSchedule(race.schedule),
     laps: toNumber(race.laps),
     circuit: normaliseCircuit(race.circuit),
-    fastestLap: race.fastestLap,
+    fastestLap: normaliseFastestLap(race),
     winner: normaliseRaceWinner(race.winner),
-    constructorWinner: normaliseConstructorWinner(race.constructorWinner),
+    constructorWinner: normaliseConstructorWinner(
+      race.constructorWinner ?? race.teamWinner ?? null,
+    ),
+  };
+}
+
+/**
+ * Corrects malformed upstream race identity.
+ *
+ * Example:
+ *
+ * Formula 1 Gulf Air Bahrain Grand Prix in Malaysia 2026
+ *
+ * The circuit country is authoritative. The malformed
+ * location/name supplied by the upstream provider is ignored.
+ */
+function normaliseRaceIdentity(race: Race): Race {
+  const match = race.raceName.match(
+    /^(.*\s)([A-Za-zÀ-ÿ][A-Za-zÀ-ÿ' -]+)\s+Grand Prix in\s+([A-Za-zÀ-ÿ][A-Za-zÀ-ÿ' -]+?)(\s+\d{4})$/i,
+  );
+
+  if (
+    !match ||
+    match[1] === undefined ||
+    match[2] === undefined ||
+    match[3] === undefined ||
+    match[4] === undefined
+  ) {
+    return race;
+  }
+
+  const prefix = match[1].trim();
+  const namedLocation = match[2].trim();
+  const statedCountry = match[3].trim();
+  const year = match[4].trim();
+  const circuitCountry = race.circuit.country.trim();
+
+  const statedCountryMatchesCircuit =
+    statedCountry.toLowerCase() === circuitCountry.toLowerCase();
+
+  const namedLocationMatchesCircuit =
+    namedLocation.toLowerCase() === circuitCountry.toLowerCase();
+
+  if (!statedCountryMatchesCircuit || namedLocationMatchesCircuit) {
+    return race;
+  }
+
+  const normalisedCountry = circuitCountry
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+
+  const normalisedRaceId = `${normalisedCountry}_${race.season}`;
+
+  const normalisedRaceName = `${prefix} ${circuitCountry} Grand Prix ${year}`;
+
+  return {
+    ...race,
+    raceId: normalisedRaceId,
+    raceName: normalisedRaceName,
   };
 }
 
@@ -612,31 +701,127 @@ function normaliseRaceResult(result: F1ApiRaceResult): RaceResult {
   };
 }
 
-function normaliseRaceResults(data: F1ApiRaceResultsResponse): RaceResults {
-  return {
-    raceId: data.races.raceId,
-    raceName: data.races.raceName,
-    season: toRequiredNumber(data.season),
-    round: toRequiredNumber(data.races.round),
-    date: data.races.date,
-    time: data.races.time,
-    url: data.races.url,
-    circuit: normaliseCircuit(data.races.circuit),
-    results: data.races.results.map(normaliseRaceResult),
-  };
+function getCalendarRaces(data: F1ApiRacesResponse): F1ApiRace[] {
+  if (Array.isArray(data.race)) {
+    return data.race;
+  }
+
+  if (Array.isArray(data.races)) {
+    return data.races;
+  }
+
+  return [];
+}
+
+function getDetailRace(data: F1ApiRaceResponse): F1ApiRace {
+  if (Array.isArray(data.race) && data.race.length > 0) {
+    const race = data.race[0];
+
+    if (race) {
+      return race;
+    }
+  }
+
+  if (Array.isArray(data.races) && data.races.length > 0) {
+    const race = data.races[0];
+
+    if (race) {
+      return race;
+    }
+  }
+
+  if (data.races && !Array.isArray(data.races)) {
+    return data.races;
+  }
+
+  throw new F1ApiError("F1 API returned no race data", "normalisation", 404);
+}
+
+function getRaceResultsRace(
+  data: F1ApiRaceResultsResponse,
+): F1ApiRaceResultsRace {
+  if (Array.isArray(data.race) && data.race.length > 0) {
+    const race = data.race[0];
+
+    if (race) {
+      return race;
+    }
+  }
+
+  if (Array.isArray(data.races) && data.races.length > 0) {
+    const race = data.races[0];
+
+    if (race) {
+      return race;
+    }
+  }
+
+  if (data.races && !Array.isArray(data.races)) {
+    return data.races;
+  }
+
+  throw new F1ApiError("F1 API returned no race results", "normalisation", 404);
 }
 
 /**
- * Resolve the current Formula 1 season from the provider.
+ * Determines whether a detail response still needs
+ * calendar identity reconciliation.
  *
- * The provider's `/current` endpoint returns the season it considers
- * current. We cache the resolved season using the same TTL as the race
- * calendar, so this is effectively free after the first call.
- *
- * Routes must use this rather than `new Date().getFullYear()`, because
- * the provider's notion of "current season" can lag the calendar year
- * around the off-season.
+ * Legitimate race IDs such as `miami` do not necessarily
+ * match their circuit country, so this does not use the
+ * circuit country as the sole signal.
  */
+function raceIdentityNeedsReconciliation(race: Race): boolean {
+  const raceId = race.raceId
+    .toLowerCase()
+    .replace(/_\d{4}$/, "")
+    .replace(/[-\s]+/g, "_");
+
+  const circuitId = race.circuit.circuitId
+    .toLowerCase()
+    .replace(/[-\s]+/g, "_");
+
+  const circuitName = race.circuit.name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+
+  const raceName = race.raceName.toLowerCase().replace(/[^a-z0-9]+/g, " ");
+
+  if (!raceId || !circuitId || !raceName) {
+    return false;
+  }
+
+  const circuitTokens = new Set([circuitId, ...circuitName.split("_")]);
+
+  const raceIdTokens = raceId.split("_");
+
+  const raceIdMatchesCircuit = raceIdTokens.some(
+    (token) => token.length >= 4 && circuitTokens.has(token),
+  );
+
+  if (raceIdMatchesCircuit) {
+    return false;
+  }
+
+  return /\bgrand prix in\b/i.test(race.raceName);
+}
+
+function mergeRaceWithCalendarIdentity(
+  detailRace: Race,
+  calendarRace: Race,
+): Race {
+  return {
+    ...detailRace,
+    raceId: calendarRace.raceId,
+    championshipId: calendarRace.championshipId,
+    raceName: calendarRace.raceName,
+    season: calendarRace.season,
+    round: calendarRace.round,
+    url: calendarRace.url,
+  };
+}
+
 export async function getCurrentSeason(): Promise<number> {
   const data = await getCachedOrFetch<F1ApiRacesResponse>(
     "races:current",
@@ -660,7 +845,7 @@ export async function getCurrentSeasonDrivers(): Promise<Driver[]> {
 export async function getCurrentSeasonConstructors(): Promise<Constructor[]> {
   const data = await getCachedOrFetch<F1ApiTeamsResponse>(
     "constructors:current",
-    "/current/teams?limit=100",
+    "/current/constructors?limit=100",
     CACHE_TTL.constructors,
   );
 
@@ -676,23 +861,62 @@ export async function getCurrentSeasonRaces(): Promise<Race[]> {
 
   const season = toRequiredNumber(data.season);
 
-  return data.races.map((race) => normaliseRace(race, season));
+  return getCalendarRaces(data).map((race) =>
+    normaliseRaceIdentity(normaliseRace(race, season)),
+  );
 }
 
 export async function getRaceByRound(
   season: number,
   round: number,
 ): Promise<Race> {
+  const path = `/${season}/${round}`;
+
   const data = await getCachedOrFetch<F1ApiRaceResponse>(
     `race:${season}:${round}`,
-    `/${season}/${round}`,
+    path,
     CACHE_TTL.race,
   );
 
-  const resolvedSeason =
-    data.season === undefined ? season : toRequiredNumber(data.season);
+  let detailRace: Race;
 
-  return normaliseRace(data.races, resolvedSeason);
+  try {
+    const resolvedSeason =
+      data.season === undefined ? season : toRequiredNumber(data.season);
+
+    detailRace = normaliseRaceIdentity(
+      normaliseRace(getDetailRace(data), resolvedSeason),
+    );
+  } catch (error) {
+    if (error instanceof F1ApiError) {
+      throw error;
+    }
+
+    const message =
+      error instanceof Error
+        ? error.message
+        : "Unknown race normalisation error";
+
+    throw new F1ApiError(`F1 API returned invalid race data: ${message}`, path);
+  }
+
+  if (!raceIdentityNeedsReconciliation(detailRace)) {
+    return detailRace;
+  }
+
+  const calendarRaces = await getCurrentSeasonRaces();
+
+  const calendarRace = calendarRaces.find((race) => race.round === round);
+
+  if (!calendarRace) {
+    throw new F1ApiError(
+      `Race round ${round} was not found in the current season calendar`,
+      path,
+      404,
+    );
+  }
+
+  return mergeRaceWithCalendarIdentity(detailRace, calendarRace);
 }
 
 export async function getCurrentDriverStandings(): Promise<{
@@ -701,7 +925,7 @@ export async function getCurrentDriverStandings(): Promise<{
   standings: DriverStanding[];
 }> {
   const data = await getCachedOrFetch<F1ApiDriverStandingsResponse>(
-    "standings:drivers:current",
+    "standings:drivers",
     "/current/drivers-championship?limit=100",
     CACHE_TTL.standings,
   );
@@ -719,7 +943,7 @@ export async function getCurrentConstructorStandings(): Promise<{
   standings: ConstructorStanding[];
 }> {
   const data = await getCachedOrFetch<F1ApiConstructorStandingsResponse>(
-    "standings:constructors:current",
+    "standings:constructors",
     "/current/constructors-championship?limit=100",
     CACHE_TTL.standings,
   );
@@ -731,22 +955,6 @@ export async function getCurrentConstructorStandings(): Promise<{
   };
 }
 
-/**
- * Return results for the most recent completed race for which the provider
- * actually has results.
- *
- * The provider can publish a race in the calendar before results are
- * available. Walking backwards through completed races and trying each one
- * lets us return the newest real data without fabricating anything.
- *
- * Any F1ApiError (404, 502, timeout) on a given race means "try the next
- * completed race". Only non-F1ApiError failures abort the search, because
- * those indicate a programming error rather than a provider state.
- *
- * If no completed race has results, or no completed races exist at all,
- * the function throws an F1ApiError with status 404. That is a
- * client-facing "nothing to show yet" condition, not an upstream outage.
- */
 export async function getCurrentRaceResults(): Promise<RaceResults> {
   const races = await getCurrentSeasonRaces();
 
@@ -760,16 +968,14 @@ export async function getCurrentRaceResults(): Promise<RaceResults> {
         return false;
       }
 
-      const time = new Date(raceDate).getTime();
-
-      return Number.isFinite(time) && time <= now;
+      return new Date(`${raceDate}T23:59:59Z`).getTime() < now;
     })
     .sort((a, b) => b.round - a.round);
 
   if (completedRaces.length === 0) {
     throw new F1ApiError(
-      "No completed races are available for the current season",
-      "/current",
+      "No completed race results are available",
+      "/current/results",
       404,
     );
   }
@@ -794,8 +1000,8 @@ export async function getCurrentRaceResults(): Promise<RaceResults> {
   }
 
   throw new F1ApiError(
-    "No race results are available for the completed races in the current season",
-    "/current",
+    "No completed race results are available",
+    "/current/results",
     404,
   );
 }
@@ -804,11 +1010,25 @@ export async function getRaceResults(
   season: number,
   round: number,
 ): Promise<RaceResults> {
+  const path = `/${season}/${round}/race`;
+
   const data = await getCachedOrFetch<F1ApiRaceResultsResponse>(
     `results:${season}:${round}`,
-    `/${season}/${round}/race`,
+    path,
     CACHE_TTL.results,
   );
 
-  return normaliseRaceResults(data);
+  const race = getRaceResultsRace(data);
+
+  return {
+    raceId: race.raceId,
+    raceName: race.raceName,
+    season: toRequiredNumber(data.season),
+    round: toRequiredNumber(race.round),
+    date: race.date,
+    time: race.time,
+    url: race.url,
+    circuit: normaliseResultCircuit(race.circuit),
+    results: race.results.map(normaliseRaceResult),
+  };
 }
