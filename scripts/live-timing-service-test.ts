@@ -1,4 +1,4 @@
-import { f1LiveTiming } from "../src/services/f1-live-timing";
+import { f1LiveTiming } from "../src/services/f1-live-timing.ts";
 
 const durationSeconds = Number(process.env.PROBE_DURATION_SECONDS ?? "120");
 

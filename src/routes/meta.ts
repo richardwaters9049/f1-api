@@ -1,17 +1,17 @@
 import type { FastifyInstance } from "fastify";
 
+import {
+  API_VERSION,
+  F1_PROVIDER_BASE_URL,
+  F1_PROVIDER_NAME,
+  SERVICE_NAME,
+} from "../config.ts";
 import { getCurrentSeason } from "../services/f1Api.ts";
-
-const SERVICE_NAME = "f1-api";
-const API_VERSION = "0.1.0";
-const F1_API_PROVIDER = "f1api.dev";
-const F1_API_BASE_URL = "https://f1api.dev/api";
-
-const LIVE_TIMING_REASON =
-  "No verified free live timing source is currently available for this service.";
+import type { LiveTimingReader } from "../services/f1-live-timing.ts";
 
 interface MetaDependencies {
   startedAt: Date;
+  liveTiming: LiveTimingReader;
 }
 
 const CAPABILITIES = {
@@ -22,7 +22,7 @@ const CAPABILITIES = {
   driverStandings: true,
   constructorStandings: true,
   raceResults: true,
-  liveTiming: false,
+  liveTiming: true,
 } as const;
 
 export async function metaRoutes(
@@ -33,18 +33,23 @@ export async function metaRoutes(
 
   app.get("/api/meta", async (_request, reply) => {
     const uptimeSeconds = Math.floor((Date.now() - startedAt.getTime()) / 1000);
+    const liveState = dependencies.liveTiming.getState();
 
     const base = {
       service: SERVICE_NAME,
       version: API_VERSION,
       provider: {
-        name: F1_API_PROVIDER,
-        baseUrl: F1_API_BASE_URL,
+        name: F1_PROVIDER_NAME,
+        baseUrl: F1_PROVIDER_BASE_URL,
       },
       capabilities: CAPABILITIES,
       liveTiming: {
-        available: false,
-        reason: LIVE_TIMING_REASON,
+        available: true,
+        running: dependencies.liveTiming.isRunning(),
+        connected: liveState.connected,
+        subscribed: liveState.subscribed,
+        lastMessageAt: liveState.lastMessageAt,
+        lastUpdateAt: liveState.lastUpdateAt,
       },
       startedAt: startedAt.toISOString(),
       uptimeSeconds,

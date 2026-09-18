@@ -208,4 +208,38 @@ describe("GET /api/races/:round", () => {
     expect(body.round).toBe(1);
     expect(body.race.round).toBe(1);
   });
+
+  test("uses the calendar identity for race detail responses", async (): Promise<void> => {
+    const calendarRace = {
+      ...providerRace(14),
+      raceId: "madrid_2026",
+      raceName: "Formula 1 Spanish Grand Prix 2026",
+    };
+    const detailRace = {
+      ...providerRace(14),
+      raceId: "spain_2026",
+      raceName: "Formula 1 Barcelona Grand Prix in Spain 2026",
+    };
+
+    globalThis.fetch = mock(
+      async (input: string | URL | Request): Promise<Response> => {
+        const url = typeof input === "string" ? input : input.toString();
+        const payload = url.endsWith("/current?limit=100")
+          ? { season: 2026, races: [calendarRace] }
+          : { season: 2026, races: detailRace };
+
+        return new Response(JSON.stringify(payload), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      },
+    ) as unknown as typeof fetch;
+
+    const response = await app.inject({ method: "GET", url: "/api/races/14" });
+    const body = response.json();
+
+    expect(response.statusCode).toBe(200);
+    expect(body.race.raceId).toBe("madrid_2026");
+    expect(body.race.raceName).toBe("Formula 1 Spanish Grand Prix 2026");
+  });
 });

@@ -10,10 +10,11 @@ The service is built with:
 - TypeScript
 - Fastify
 
-The API consumes Formula 1 data from:
+The API consumes Formula 1 data from the REST provider and the official timing feed:
 
 ```text
 https://f1api.dev/api
+https://livetiming.formula1.com/signalrcore
 ```
 
 The service normalises, validates, caches and exposes that data through a small internal API.
@@ -99,6 +100,12 @@ Type checking:
 bun run typecheck
 ```
 
+Tests:
+
+```bash
+bun run test
+```
+
 There is currently no separate build script.
 
 ---
@@ -118,6 +125,8 @@ Environment variables:
 ```text
 PORT
 HOST
+F1_PROVIDER_BASE_URL
+UPSTREAM_TIMEOUT_MS
 ```
 
 Defaults:
@@ -125,6 +134,8 @@ Defaults:
 ```text
 PORT=8787
 HOST=127.0.0.1
+F1_PROVIDER_BASE_URL=https://f1api.dev/api
+UPSTREAM_TIMEOUT_MS=10000
 ```
 
 ---
@@ -143,11 +154,17 @@ GET /api/constructors
 GET /api/standings/drivers
 GET /api/standings/constructors
 
+GET /api/races
+GET /api/races/:round
+
 GET /api/results/current
 GET /api/results/:season/:round
+
+GET /api/live
+GET /api/live-timing/status
 ```
 
-Race calendar and race detail routes are also provided by the race route module.
+`GET /api/live-timing` is a deprecated compatibility alias for `/api/live`.
 
 Do not document an endpoint as available unless it actually exists in the current source.
 
@@ -180,28 +197,21 @@ Do not claim that an unfinished feature is operational.
 
 ## Live Timing
 
-Live timing is currently disabled.
+Live timing is provided by the official Formula 1 SignalR timing feed.
 
-The API must report:
+The metadata endpoint must report the implemented capability separately from the current connection state:
 
 ```text
-liveTiming.available = false
+capabilities.liveTiming = true
+liveTiming.available = true
+liveTiming.running
+liveTiming.connected
+liveTiming.subscribed
 ```
 
-Do not implement fake live timing to make the frontend appear complete.
+The timing service may retain the most recent session snapshot between events. A connected feed is not proof that a race session is currently live. Consumers must use session dates and status and must never present historical or scheduled data as live.
 
-A live timing source must be:
-
-1. Real.
-2. Current.
-3. Reliably accessible.
-4. Suitable for the intended deployment environment.
-5. Available without requiring a paid service if the project requirement remains free live data.
-6. Tested before being exposed through the API.
-
-Historical data must never be presented as live data.
-
-Scheduled data must never be presented as live data.
+Incremental timing updates must merge into the retained topic state. Replacing a full timing object with a one-driver patch loses valid data and is not acceptable.
 
 ---
 
@@ -275,9 +285,11 @@ Presentation-specific fallback text belongs in the frontend, not in the data ser
 
 Race results must represent actual provider data.
 
-The `/api/results/current` endpoint may need to fall back to an earlier completed race when the newest scheduled race does not yet have results from the provider.
+The `/api/results/current` endpoint may fall back to an earlier completed race when the newest completed round returns `404` because results are not yet available.
 
 This is acceptable.
+
+Do not fall back when the provider times out or returns another failure. That would hide an outage behind stale data.
 
 Fabricating results for a scheduled but incomplete race is not acceptable.
 
@@ -364,6 +376,7 @@ After changing TypeScript source files, run:
 
 ```bash
 bun run typecheck
+bun run test
 ```
 
 When the server is running, manually verify:

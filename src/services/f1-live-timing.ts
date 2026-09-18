@@ -1,8 +1,10 @@
 import WebSocket from "ws";
 
-const NEGOTIATE_URL = "https://livetiming.formula1.com/signalrcore/negotiate";
-
-const WEBSOCKET_URL = "wss://livetiming.formula1.com/signalrcore";
+import {
+  LIVE_TIMING_NEGOTIATE_URL,
+  LIVE_TIMING_WEBSOCKET_URL,
+  UPSTREAM_TIMEOUT_MS,
+} from "../config.ts";
 
 const RECORD_SEPARATOR = "\u001e";
 
@@ -56,6 +58,11 @@ export interface F1LiveState {
   updateCounts: Record<string, number>;
 }
 
+export interface LiveTimingReader {
+  getState(): F1LiveState;
+  isRunning(): boolean;
+}
+
 interface SignalRConnection {
   negotiateVersion?: number;
   connectionToken?: string;
@@ -88,6 +95,20 @@ function parseJson(value: unknown): unknown {
   } catch {
     return value;
   }
+}
+
+export function mergeFeedData(current: unknown, incoming: unknown): unknown {
+  if (!isRecord(current) || !isRecord(incoming)) {
+    return structuredClone(incoming);
+  }
+
+  const merged: JsonRecord = structuredClone(current);
+
+  for (const [key, value] of Object.entries(incoming)) {
+    merged[key] = mergeFeedData(merged[key], value);
+  }
+
+  return merged;
 }
 
 function getLoadBalancerCookie(response: Response): string | null {
@@ -192,54 +213,63 @@ function extractFeedEntries(
   return entries;
 }
 
-function applyFeed(state: F1LiveState, topic: string, data: unknown): void {
-  state.latestFeeds[topic] = data;
+function applyFeed(
+  state: F1LiveState,
+  topic: string,
+  data: unknown,
+  merge: boolean,
+): void {
+  const nextData = merge
+    ? mergeFeedData(state.latestFeeds[topic], data)
+    : structuredClone(data);
+
+  state.latestFeeds[topic] = nextData;
   state.lastUpdateAt = new Date().toISOString();
   state.updateCounts[topic] = (state.updateCounts[topic] ?? 0) + 1;
 
   switch (topic) {
     case "SessionInfo":
-      state.sessionInfo = isRecord(data) ? data : null;
+      state.sessionInfo = isRecord(nextData) ? nextData : null;
       break;
 
     case "SessionStatus":
-      state.sessionStatus = isRecord(data) ? data : null;
+      state.sessionStatus = isRecord(nextData) ? nextData : null;
       break;
 
     case "DriverList":
-      state.driverList = isRecord(data) ? data : null;
+      state.driverList = isRecord(nextData) ? nextData : null;
       break;
 
     case "TimingData":
-      state.timingData = data;
+      state.timingData = nextData;
       break;
 
     case "TimingAppData":
-      state.timingAppData = data;
+      state.timingAppData = nextData;
       break;
 
     case "TimingStats":
-      state.timingStats = data;
+      state.timingStats = nextData;
       break;
 
     case "TrackStatus":
-      state.trackStatus = data;
+      state.trackStatus = nextData;
       break;
 
     case "WeatherData":
-      state.weatherData = data;
+      state.weatherData = nextData;
       break;
 
     case "RaceControlMessages":
-      state.raceControlMessages = data;
+      state.raceControlMessages = nextData;
       break;
 
     case "TopThree":
-      state.topThree = data;
+      state.topThree = nextData;
       break;
 
     case "LapCount":
-      state.lapCount = data;
+      state.lapCount = nextData;
       break;
 
     default:
@@ -262,9 +292,9 @@ export class F1LiveTimingService {
 
   private reconnectAttempts = 0;
 
-  private readonly maxReconnectAttempts = 5;
-
   private readonly reconnectDelayMs = 5_000;
+
+  private readonly maxReconnectDelayMs = 60_000;
 
   private readonly listeners = new Set<(update: F1FeedUpdate) => void>();
 
@@ -317,14 +347,15 @@ export class F1LiveTimingService {
   }
 
   private async getLoadBalancerCookie(): Promise<string | null> {
-    const response = await fetch(NEGOTIATE_URL, {
+    const response = await fetch(LIVE_TIMING_NEGOTIATE_URL, {
       method: "OPTIONS",
       headers: {
         Accept: "*/*",
         Origin: "https://www.formula1.com",
         Referer: "https://www.formula1.com/",
-        "User-Agent": "f1-api-live-timing-probe/1.0",
+        "User-Agent": "f1-api-live-timing-service/1.0",
       },
+      signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
     });
 
     if (!response.ok) {
@@ -350,16 +381,17 @@ export class F1LiveTimingService {
       "Content-Type": "application/json",
       Origin: "https://www.formula1.com",
       Referer: "https://www.formula1.com/",
-      "User-Agent": "f1-api-live-timing-probe/1.0",
+      "User-Agent": "f1-api-live-timing-service/1.0",
     };
 
     if (cookie) {
       headers.Cookie = `AWSALBCORS=${cookie}`;
     }
 
-    const response = await fetch(NEGOTIATE_URL, {
+    const response = await fetch(LIVE_TIMING_NEGOTIATE_URL, {
       method: "POST",
       headers,
+      signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
     });
 
     const body = await response.text();
@@ -370,7 +402,19 @@ export class F1LiveTimingService {
       );
     }
 
-    return JSON.parse(body) as SignalRConnection;
+    let connection: unknown;
+
+    try {
+      connection = JSON.parse(body);
+    } catch {
+      throw new Error("Negotiation returned invalid JSON");
+    }
+
+    if (!isRecord(connection)) {
+      throw new Error("Negotiation returned an invalid response");
+    }
+
+    return connection as SignalRConnection;
   }
 
   private async connect(): Promise<void> {
@@ -396,14 +440,14 @@ export class F1LiveTimingService {
         );
       }
 
-      const websocketUrl = `${WEBSOCKET_URL}?id=${encodeURIComponent(
+      const websocketUrl = `${LIVE_TIMING_WEBSOCKET_URL}?id=${encodeURIComponent(
         connectionToken,
       )}`;
 
       const headers: Record<string, string> = {
         Origin: "https://www.formula1.com",
         Referer: "https://www.formula1.com/",
-        "User-Agent": "f1-api-live-timing-probe/1.0",
+        "User-Agent": "f1-api-live-timing-service/1.0",
       };
 
       if (this.cookie) {
@@ -475,19 +519,21 @@ export class F1LiveTimingService {
   private scheduleReconnect(): void {
     if (
       this.stopping ||
-      this.reconnectTimer ||
-      this.reconnectAttempts >= this.maxReconnectAttempts
+      this.reconnectTimer
     ) {
       return;
     }
 
     this.reconnectAttempts += 1;
 
-    const delay = this.reconnectDelayMs * this.reconnectAttempts;
+    const delay = Math.min(
+      this.reconnectDelayMs * 2 ** Math.min(this.reconnectAttempts - 1, 4),
+      this.maxReconnectDelayMs,
+    );
 
     console.log(
       `[F1 Live] Reconnecting in ${delay / 1_000}s ` +
-        `(attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`,
+        `(attempt ${this.reconnectAttempts})`,
     );
 
     this.reconnectTimer = setTimeout(() => {
@@ -532,8 +578,6 @@ export class F1LiveTimingService {
       }
 
       if (message.type === 6) {
-        console.log("[F1 Live] SignalR ping received");
-
         continue;
       }
 
@@ -581,7 +625,7 @@ export class F1LiveTimingService {
       const entries = extractFeedEntries(message.result);
 
       for (const entry of entries) {
-        applyFeed(this.state, entry.topic, entry.data);
+        applyFeed(this.state, entry.topic, entry.data, false);
       }
 
       console.log(
@@ -621,7 +665,7 @@ export class F1LiveTimingService {
     }
 
     for (const entry of entries) {
-      applyFeed(this.state, entry.topic, entry.data);
+      applyFeed(this.state, entry.topic, entry.data, true);
 
       const update: F1FeedUpdate = {
         topic: entry.topic,

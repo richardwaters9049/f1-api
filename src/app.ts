@@ -7,12 +7,17 @@ import { metaRoutes } from "./routes/meta.ts";
 import { racesRoutes } from "./routes/races.ts";
 import { resultsRoutes } from "./routes/results.ts";
 import { standingsRoutes } from "./routes/standings.ts";
-import { liveTimingRoutes } from "./routes-live-timing.ts";
+import { liveTimingRoutes } from "./routes/live.ts";
+import {
+  f1LiveTiming,
+  type LiveTimingReader,
+} from "./services/f1-live-timing.ts";
 
 export interface BuildAppOptions {
   logger?: boolean;
   getActivePort?: () => number | null;
   startedAt?: Date;
+  liveTiming?: LiveTimingReader;
 }
 
 export async function buildApp(
@@ -25,15 +30,16 @@ export async function buildApp(
   const startedAt = options.startedAt ?? new Date();
 
   const getActivePort = options.getActivePort ?? ((): number | null => null);
+  const liveTiming = options.liveTiming ?? f1LiveTiming;
 
   await healthRoutes(app, { getActivePort });
-  await metaRoutes(app, { startedAt });
+  await metaRoutes(app, { startedAt, liveTiming });
   await driversRoutes(app);
   await constructorsRoutes(app);
   await racesRoutes(app);
   await resultsRoutes(app);
   await standingsRoutes(app);
-  await liveTimingRoutes(app);
+  await liveTimingRoutes(app, liveTiming);
 
   return app;
 }

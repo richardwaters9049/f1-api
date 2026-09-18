@@ -52,8 +52,10 @@ describe("GET /api/meta", () => {
     expect(body.provider.name).toBe("f1api.dev");
     expect(body.provider.baseUrl).toBe("https://f1api.dev/api");
     expect(body.capabilities.drivers).toBe(true);
-    expect(body.capabilities.liveTiming).toBe(false);
-    expect(body.liveTiming.available).toBe(false);
+    expect(body.capabilities.liveTiming).toBe(true);
+    expect(body.liveTiming.available).toBe(true);
+    expect(body.liveTiming.running).toBe(false);
+    expect(body.liveTiming.connected).toBe(false);
     expect(body.startedAt).toBe("2026-09-14T00:00:00.000Z");
     expect(typeof body.uptimeSeconds).toBe("number");
     expect(typeof body.timestamp).toBe("string");
@@ -78,6 +80,6 @@ describe("GET /api/meta", () => {
     expect(body.error).toBe("Unable to verify current season data");
     expect(body.service).toBe("f1-api");
     expect(body.version).toBe("0.1.0");
-    expect(body.capabilities.liveTiming).toBe(false);
+    expect(body.capabilities.liveTiming).toBe(true);
   });
 });

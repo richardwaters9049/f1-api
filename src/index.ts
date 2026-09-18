@@ -7,7 +7,17 @@ const getActivePort = (): number | null => activePort;
 
 const app = await buildApp({ getActivePort });
 
-const preferredPort = Number(process.env.PORT ?? 8787);
+function parsePort(value: string | undefined): number {
+  const port = Number(value ?? 8787);
+
+  if (!Number.isInteger(port) || port < 1 || port > 65_535) {
+    throw new Error("PORT must be an integer between 1 and 65535");
+  }
+
+  return port;
+}
+
+const preferredPort = parsePort(process.env.PORT);
 
 const host = process.env.HOST ?? "127.0.0.1";
 
@@ -34,6 +44,10 @@ async function startServer(): Promise<void> {
         "code" in error &&
         error.code === "EADDRINUSE"
       ) {
+        if (port >= 65_535) {
+          throw new Error("No available port could be found");
+        }
+
         console.warn(`Port ${port} is already in use. Trying ${port + 1}...`);
 
         port += 1;
@@ -49,6 +63,10 @@ async function startServer(): Promise<void> {
 await startServer();
 
 async function shutdown(signal: string): Promise<void> {
+  if (app.server.listening === false) {
+    return;
+  }
+
   console.log(`[F1 API] ${signal} received. Shutting down...`);
 
   await f1LiveTiming.stop();

@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "bun --hot src/index.ts",
     "start": "NODE_ENV=production bun src/index.ts",
+    "probe:live": "bun scripts/live-timing-service-test.ts",
     "typecheck": "tsc --noEmit",
     "test": "bun test"
   },
@@ -17,7 +18,6 @@
     "@types/bun": "latest",
     "@types/node": "^26.5.1",
     "@types/ws": "^8.18.1",
-    "tsx": "^4.23.13",
     "typescript": "^7.0.2"
   }
 }

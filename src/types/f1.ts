@@ -27,6 +27,9 @@ export interface Constructor {
   constructorId: string;
   name: string;
   nationality: string;
+  firstAppearance: number | null;
+  constructorsChampionships: number | null;
+  driversChampionships: number | null;
   url: string | null;
 }
 
