@@ -144,27 +144,24 @@ function getSessionEndTimestamp(sessionInfo: JsonRecord | null): number | null {
   return Number.isFinite(timestamp) ? timestamp : null;
 }
 
-function isActiveSessionStatus(sessionStatus: JsonRecord | null): boolean {
-  const status = getRecordString(
-    sessionStatus,
-    "Status",
-    "Name",
-  )?.toLowerCase();
-
-  return status === "started" || status === "active" || status === "live";
-}
-
-function isStaleSessionSnapshot(state: F1LiveState, now = Date.now()): boolean {
-  if (isActiveSessionStatus(state.sessionStatus)) {
-    return false;
-  }
-
+export function isStaleSessionSnapshot(
+  state: F1LiveState,
+  now = Date.now(),
+): boolean {
   const sessionEndTimestamp = getSessionEndTimestamp(state.sessionInfo);
 
   if (sessionEndTimestamp === null) {
     return false;
   }
 
+  /*
+   * SessionInfo is authoritative for determining whether a snapshot
+   * belongs to a historical session.
+   *
+   * The F1 SignalR service can return a cached initial snapshot whose
+   * SessionStatus still says "Started" long after that session ended.
+   * Therefore SessionStatus must not override an expired EndDate.
+   */
   return now > sessionEndTimestamp + SESSION_STALE_GRACE_MS;
 }
 
@@ -249,9 +246,10 @@ function createInitialState(): F1LiveState {
   };
 }
 
-function extractFeedEntries(
-  value: unknown,
-): Array<{ topic: string; data: unknown }> {
+function extractFeedEntries(value: unknown): Array<{
+  topic: string;
+  data: unknown;
+}> {
   const entries: Array<{
     topic: string;
     data: unknown;
@@ -323,7 +321,9 @@ function applyFeed(
     : structuredClone(data);
 
   state.latestFeeds[topic] = nextData;
+
   state.lastUpdateAt = new Date().toISOString();
+
   state.updateCounts[topic] = (state.updateCounts[topic] ?? 0) + 1;
 
   switch (topic) {
