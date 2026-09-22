@@ -1,5 +1,20 @@
 # F1 API engineering notes
 
+## 21 September 2026
+
+### Oracle Always Free deployment preparation
+
+- Chose an OCI Always Free VM for the long-running Bun/Fastify process and its
+  persistent outbound SignalR connection. Pressable remains the WordPress host;
+  the API will be a separate service.
+- Added a systemd service template and a Caddy HTTPS reverse-proxy template in
+  `deploy/oracle/`, plus a runbook for VM, DNS, network, deployment and checks.
+- Kept the API bound to localhost and did not change development defaults.
+- Made production fail when its configured port is occupied, rather than
+  silently selecting another port while the reverse proxy still targets 8787.
+- No Oracle account, VM, DNS record or live deployment has been created yet.
+
+
 ## 18 September 2026
 
 ### Summary

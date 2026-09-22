@@ -40,6 +40,10 @@ For production:
 bun run start
 ```
 
+For an Oracle Always Free VM, use the [deployment runbook](deploy/oracle/README.md).
+It runs Bun as an unprivileged systemd service on localhost, with Caddy
+providing public HTTPS. This does not change local development settings.
+
 ## Configuration
 
 All settings are optional:

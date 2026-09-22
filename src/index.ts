@@ -44,6 +44,10 @@ async function startServer(): Promise<void> {
         "code" in error &&
         error.code === "EADDRINUSE"
       ) {
+        if (process.env.NODE_ENV === "production") {
+          throw new Error(`Port ${port} is already in use`, { cause: error });
+        }
+
         if (port >= 65_535) {
           throw new Error("No available port could be found");
         }

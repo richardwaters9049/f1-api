@@ -120,6 +120,11 @@ The preferred development port is:
 
 The server automatically attempts the next available port if the preferred port is already occupied.
 
+This fallback is for local development only. In production, the configured
+port must remain fixed so the reverse proxy cannot silently point at the wrong
+process. The Oracle VM deployment template lives in `deploy/oracle/` and keeps
+Fastify on localhost behind Caddy. Never expose port 8787 publicly.
+
 Environment variables:
 
 ```text

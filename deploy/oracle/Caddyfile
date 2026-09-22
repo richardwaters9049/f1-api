@@ -1,0 +1,4 @@
+# Replace api.example.com with the subdomain pointing at the Oracle VM.
+api.example.com {
+    reverse_proxy 127.0.0.1:8787
+}
