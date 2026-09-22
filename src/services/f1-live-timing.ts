@@ -7,6 +7,7 @@ import {
 } from "../config.ts";
 
 const RECORD_SEPARATOR = "\u001e";
+const SESSION_STALE_GRACE_MS = 30 * 60 * 1_000;
 
 const TOPICS = [
   "Heartbeat",
@@ -83,6 +84,104 @@ type JsonRecord = Record<string, unknown>;
 
 function isRecord(value: unknown): value is JsonRecord {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function getRecordString(
+  record: JsonRecord | null,
+  ...keys: string[]
+): string | null {
+  if (!record) {
+    return null;
+  }
+
+  for (const key of keys) {
+    const value = record[key];
+
+    if (typeof value === "string" && value.trim() !== "") {
+      return value.trim();
+    }
+  }
+
+  return null;
+}
+
+function getNestedRecord(
+  record: JsonRecord | null,
+  ...keys: string[]
+): JsonRecord | null {
+  if (!record) {
+    return null;
+  }
+
+  for (const key of keys) {
+    const value = record[key];
+
+    if (isRecord(value)) {
+      return value;
+    }
+  }
+
+  return null;
+}
+
+function getSessionEndTimestamp(sessionInfo: JsonRecord | null): number | null {
+  if (!sessionInfo) {
+    return null;
+  }
+
+  const nestedSession = getNestedRecord(sessionInfo, "Session");
+
+  const dateValue =
+    getRecordString(sessionInfo, "EndDate", "DateEnd") ??
+    getRecordString(nestedSession, "EndDate", "DateEnd");
+
+  if (!dateValue) {
+    return null;
+  }
+
+  const timestamp = Date.parse(dateValue);
+
+  return Number.isFinite(timestamp) ? timestamp : null;
+}
+
+function isActiveSessionStatus(sessionStatus: JsonRecord | null): boolean {
+  const status = getRecordString(
+    sessionStatus,
+    "Status",
+    "Name",
+  )?.toLowerCase();
+
+  return status === "started" || status === "active" || status === "live";
+}
+
+function isStaleSessionSnapshot(state: F1LiveState, now = Date.now()): boolean {
+  if (isActiveSessionStatus(state.sessionStatus)) {
+    return false;
+  }
+
+  const sessionEndTimestamp = getSessionEndTimestamp(state.sessionInfo);
+
+  if (sessionEndTimestamp === null) {
+    return false;
+  }
+
+  return now > sessionEndTimestamp + SESSION_STALE_GRACE_MS;
+}
+
+function clearSessionSnapshot(state: F1LiveState): void {
+  state.sessionInfo = null;
+  state.sessionStatus = null;
+  state.driverList = null;
+  state.timingData = null;
+  state.timingAppData = null;
+  state.timingStats = null;
+  state.trackStatus = null;
+  state.weatherData = null;
+  state.raceControlMessages = null;
+  state.topThree = null;
+  state.lapCount = null;
+  state.latestFeeds = {};
+  state.lastUpdateAt = null;
 }
 
 function parseJson(value: unknown): unknown {
@@ -299,7 +398,13 @@ export class F1LiveTimingService {
   private readonly listeners = new Set<(update: F1FeedUpdate) => void>();
 
   public getState(): F1LiveState {
-    return structuredClone(this.state);
+    const snapshot = structuredClone(this.state);
+
+    if (isStaleSessionSnapshot(snapshot)) {
+      clearSessionSnapshot(snapshot);
+    }
+
+    return snapshot;
   }
 
   public isRunning(): boolean {
@@ -517,10 +622,7 @@ export class F1LiveTimingService {
   }
 
   private scheduleReconnect(): void {
-    if (
-      this.stopping ||
-      this.reconnectTimer
-    ) {
+    if (this.stopping || this.reconnectTimer) {
       return;
     }
 
